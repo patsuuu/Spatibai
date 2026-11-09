@@ -276,18 +276,32 @@ async function sendVerificationCode(email, name, code) {
     signal: AbortSignal.timeout(20000),
     redirect: "follow",
   });
+  const result = await response.json().catch(() => null);
   if (!response.ok) {
     throw new Error(`Gmail HTTPS relay returned HTTP ${response.status}.`);
   }
-  const result = await response.json().catch(() => null);
-  if (!result?.ok) {
-    throw new Error("Gmail HTTPS relay rejected the email request.");
+  if (result?.ok !== true) {
+    const relayError = ["unauthorized", "invalid_request", "delivery_failed"]
+      .includes(result?.error) ? result.error : "invalid_response";
+    throw new Error(`Gmail HTTPS relay rejected the email request (${relayError}).`);
   }
 }
 
 function emailFailureMessage(error) {
   if (error.message.includes("not configured") || error.message.includes("URL is invalid")) {
     return "Hindi pa kumpleto ang Gmail HTTPS relay setup sa Render. Tingnan ang GMAIL_BRIDGE_URL at GMAIL_BRIDGE_SECRET.";
+  }
+  if (error.message.includes("(unauthorized)")) {
+    return "Hindi tugma ang GMAIL_BRIDGE_SECRET sa Render at sa Script Properties ng Google Apps Script.";
+  }
+  if (error.message.includes("(delivery_failed)")) {
+    return "Hindi nakapagpadala ang Gmail account ng Apps Script. Tingnan ang Executions at pahintulutan ang MailApp.";
+  }
+  if (error.message.includes("(invalid_request)")) {
+    return "Hindi tama ang Apps Script request. Tiyaking nailagay at na-deploy ang tamang relay code.";
+  }
+  if (error.message.includes("(invalid_response)")) {
+    return "Hindi JSON ang sagot ng Apps Script. Tiyaking tama ang Web App URL, naka-access ito sa Anyone, at aktibo ang deployment.";
   }
   return "Hindi nakapagpadala ng email ang Gmail relay. Tingnan ang Google Apps Script Executions at Render Logs.";
 }
