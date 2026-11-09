@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="tl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101512">
+  <title>Spatibai — Music para sa’yo</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Spatibai home"><span class="brand-mark">♫</span> spatibai</a>
+    <a class="admin-link" href="/admin">Admin ↗</a>
+  </header>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">MGA KANTANG PINILI PARA SA’YO</p>
+        <h1>Press play.<br><span>Damhin ang tugtog.</span></h1>
+        <p class="hero-copy">Mga bagong tunog, lahat nasa iisang lugar.</p>
+      </div>
+      <div class="hero-disc" aria-hidden="true"><span>♫</span></div>
+    </section>
+    <section class="catalog">
+      <div class="section-heading">
+        <div><p class="eyebrow">SPATIBAI LIBRARY</p><h2>Mga kanta</h2></div>
+        <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Maghanap ng kanta o artist" autocomplete="off"></label>
+      </div>
+      <p class="notice" id="notice" role="status">Kinukuha ang music library…</p>
+      <div class="track-list" id="track-list"></div>
+    </section>
+  </main>
+  <footer class="site-footer">Spatibai <span>•</span> Music na ibinahagi ng admin</footer>
+  <aside class="player" aria-label="Music player">
+    <div class="now-playing">
+      <div class="cover" id="player-cover">♫</div>
+      <div class="now-copy"><strong id="player-title">Pumili ng kanta</strong><span id="player-artist">Spatibai</span></div>
+    </div>
+    <div class="play-controls">
+      <button class="icon-button" id="previous" type="button" aria-label="Previous track">⏮</button>
+      <button class="play-button" id="play" type="button" aria-label="Play" disabled>▶</button>
+      <button class="icon-button" id="next" type="button" aria-label="Next track">⏭</button>
+    </div>
+    <div class="timeline">
+      <span id="elapsed">0:00</span>
+      <input id="seek" type="range" min="0" max="1000" value="0" aria-label="Seek" disabled>
+      <span id="duration">0:00</span>
+    </div>
+    <audio id="audio" preload="metadata"></audio>
+  </aside>
+</body>
+</html>

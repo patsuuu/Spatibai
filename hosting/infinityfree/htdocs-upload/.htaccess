@@ -1,0 +1,15 @@
+Options -Indexes
+
+<FilesMatch "^(config\.php|config\.example\.php|database\.sql)$">
+    Require all denied
+</FilesMatch>
+
+RewriteEngine On
+RewriteRule ^admin/?$ admin.html [L]
+RewriteRule ^api/tracks$ api.php?route=tracks [QSA,L]
+RewriteRule ^api/admin/session$ api.php?route=admin-session [QSA,L]
+RewriteRule ^api/admin/login$ api.php?route=admin-login [QSA,L]
+RewriteRule ^api/admin/logout$ api.php?route=admin-logout [QSA,L]
+RewriteRule ^api/admin/tracks$ api.php?route=admin-tracks [QSA,L]
+RewriteRule ^api/admin/tracks/([a-fA-F0-9-]{36})$ api.php?route=admin-track&id=$1 [QSA,L]
+RewriteRule ^media/([a-fA-F0-9-]{36})$ api.php?route=media&id=$1 [QSA,L]

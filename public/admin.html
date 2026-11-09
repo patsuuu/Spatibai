@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="tl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101512">
+  <title>Admin — Spatibai</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/admin.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="brand-mark">♫</span> spatibai</a>
+    <a class="admin-link" href="/">← Tingnan ang library</a>
+  </header>
+  <main class="admin-page">
+    <section class="admin-heading">
+      <p class="eyebrow">SPATIBAI STUDIO</p>
+      <h1>Music <span>management.</span></h1>
+      <p class="hero-copy">Mag-upload ng mga kanta para mapakinggan ng lahat ng bumibisita.</p>
+    </section>
+    <section class="panel" id="login-panel">
+      <h2>Admin login</h2>
+      <p class="muted">Ilagay ang admin password para mapamahalaan ang library.</p>
+      <form id="login-form" class="stack">
+        <label>Password<input type="password" name="password" required autocomplete="current-password"></label>
+        <button class="primary-button" type="submit">Mag-log in</button>
+        <p class="form-message" id="login-message" role="alert"></p>
+      </form>
+    </section>
+    <section class="admin-dashboard hidden" id="dashboard">
+      <section class="panel">
+        <div class="section-heading compact">
+          <div><p class="eyebrow">BAGONG RELEASE</p><h2>Mag-upload ng kanta</h2></div>
+        </div>
+        <form id="upload-form" class="stack">
+          <div class="form-grid">
+            <label>Pamagat ng kanta<input name="title" maxlength="120" placeholder="Hal. Paboritong Kanta" required></label>
+            <label>Artist<input name="artist" maxlength="120" placeholder="Hal. Spatibai Artist"></label>
+          </div>
+          <label class="file-picker">Audio file
+            <input id="audio-file" name="audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.weba" required>
+            <span class="file-help" id="file-help">Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).</span>
+          </label>
+          <button class="primary-button" id="upload-button" type="submit">↑ &nbsp; I-upload sa library</button>
+          <p class="form-message" id="upload-message" role="status"></p>
+        </form>
+      </section>
+      <section class="panel">
+        <div class="section-heading compact"><div><p class="eyebrow">LIVE SA SITE</p><h2>Mga na-upload</h2></div><span class="count" id="track-count">0 kanta</span></div>
+        <div class="admin-track-list" id="admin-track-list"></div>
+      </section>
+      <button class="text-button" id="logout" type="button">Mag-log out</button>
+    </section>
+  </main>
+  <footer class="site-footer">Spatibai Studio</footer>
+</body>
+</html>

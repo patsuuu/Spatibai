@@ -1,0 +1,8 @@
+{
+    "name": "spatibai/infinityfree-api",
+    "description": "PHP/MySQL API and Gmail SMTP mailer for Spatibai",
+    "type": "project",
+    "require": {
+        "phpmailer/phpmailer": "^6.9"
+    }
+}
