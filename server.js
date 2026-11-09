@@ -6,7 +6,6 @@ const path = require("node:path");
 const { pipeline } = require("node:stream/promises");
 const { Readable } = require("node:stream");
 const mysql = require("mysql2/promise");
-const nodemailer = require("nodemailer");
 const { promisify } = require("node:util");
 
 const ROOT = __dirname;
@@ -253,39 +252,44 @@ async function checkAuthRate(action, req, limit) {
 }
 
 async function sendVerificationCode(email, name, code) {
-  const host = process.env.SMTP_HOST || "smtp.gmail.com";
-  const port = Number(process.env.SMTP_PORT || 587);
-  const username = process.env.SMTP_USERNAME;
-  const password = process.env.SMTP_PASSWORD?.replace(/\s+/g, "");
-  const from = process.env.SMTP_FROM_EMAIL || username;
-  if (host !== "smtp.gmail.com" || !username || !password ||
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username) ||
-      from !== username || ![465, 587].includes(port)) {
-    throw new Error("Gmail SMTP settings are incomplete or invalid.");
+  const bridgeUrl = process.env.GMAIL_BRIDGE_URL;
+  const bridgeSecret = process.env.GMAIL_BRIDGE_SECRET;
+  if (!bridgeUrl || !bridgeSecret || bridgeSecret.length < 32) {
+    throw new Error("Gmail HTTPS relay is not configured.");
   }
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user: username, pass: password },
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
-    socketTimeout: 20000,
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(bridgeUrl);
+  } catch {
+    throw new Error("Gmail HTTPS relay URL is invalid.");
+  }
+  if (parsedUrl.protocol !== "https:" || !parsedUrl.pathname.endsWith("/exec")) {
+    throw new Error("Gmail HTTPS relay URL is invalid.");
+  }
+
+  const response = await fetch(parsedUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ secret: bridgeSecret, email, name, code }),
+    signal: AbortSignal.timeout(20000),
+    redirect: "follow",
   });
-  await transporter.sendMail({
-    from: `"Spatibai" <${from}>`,
-    to: email,
-    subject: "Verify your Spatibai account",
-    text: `Hi ${name},\n\nYour Spatibai verification code is: ${code}\n\n` +
-      "It expires in 15 minutes. If you did not request this, you can ignore this email.",
-  });
+  if (!response.ok) {
+    throw new Error(`Gmail HTTPS relay returned HTTP ${response.status}.`);
+  }
+  const result = await response.json().catch(() => null);
+  if (!result?.ok) {
+    throw new Error("Gmail HTTPS relay rejected the email request.");
+  }
 }
 
 function emailFailureMessage(error) {
-  if (error.message === "Gmail SMTP settings are incomplete or invalid.") {
-    return "Mali o kulang ang Gmail SMTP settings sa Render environment variables.";
+  if (error.message.includes("not configured") || error.message.includes("URL is invalid")) {
+    return "Hindi pa kumpleto ang Gmail HTTPS relay setup sa Render. Tingnan ang GMAIL_BRIDGE_URL at GMAIL_BRIDGE_SECRET.";
   }
-  return "Hindi makapagpadala ang server ng email. Tingnan ang Render logs, Gmail App Password, at SMTP access.";
+  return "Hindi nakapagpadala ng email ang Gmail relay. Tingnan ang Google Apps Script Executions at Render Logs.";
 }
 
 async function registerUser(req, res) {

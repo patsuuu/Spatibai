@@ -7,8 +7,7 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "mysql2": "^3.14.1",
-    "nodemailer": "^10.4.0"
+    "mysql2": "^3.14.1"
   },
   "engines": {
     "node": ">=20"

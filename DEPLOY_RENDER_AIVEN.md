@@ -1,6 +1,6 @@
 # Deploy Spatibai with Render, Aiven, and Gmail
 
-The Node.js server supports the Android app's registration, six-digit email verification, login, and logout API. Aiven stores accounts and sessions; Render runs the API and website. Gmail SMTP secrets belong only in Render environment variables.
+The Node.js server supports the Android app's registration, six-digit email verification, login, and logout API. Aiven stores accounts and sessions; Render runs the API and website. Verification mail is sent through a Google Apps Script HTTPS relay, so no Gmail password or SMTP credential is stored in Render.
 
 ## 1. Create the Aiven MySQL database
 
@@ -24,15 +24,12 @@ The Node.js server supports the Android app's registration, six-digit email veri
    | `DB_USER` | Aiven username |
    | `DB_PASSWORD` | Aiven database password |
    | `DB_CA_CERT` | Entire downloaded Aiven CA certificate, including the `BEGIN` and `END CERTIFICATE` lines |
-   | `SMTP_HOST` | `smtp.gmail.com` |
-   | `SMTP_PORT` | `587` |
-   | `SMTP_USERNAME` | The Gmail account that sends verification messages |
-   | `SMTP_PASSWORD` | Gmail App Password, not your normal Gmail password |
-   | `SMTP_FROM_EMAIL` | The same Gmail address as `SMTP_USERNAME` |
+   | `GMAIL_BRIDGE_URL` | The deployed Google Apps Script Web App URL ending in `/exec` |
+   | `GMAIL_BRIDGE_SECRET` | The same long random secret stored in the Apps Script project property |
    | `NODE_ENV` | `production` |
    | `DATA_DIR` | `/var/data` if you attach a persistent disk |
 
-4. If the CA certificate or App Password is multiline / contains spaces, paste it directly into the Render environment value field. The server strips spaces from the Gmail App Password. Never send these secrets in chat or commit them.
+4. Paste the CA certificate directly into the Render environment value field. Never send secrets in chat or commit them.
 5. Deploy and wait for the service to become `Live`. Render's health check can use `/healthz`.
 
 ## 3. Keep uploaded music persistent
@@ -45,13 +42,15 @@ After deployment, copy the public HTTPS URL from the Render service, for example
 
 Check `https://YOUR-RENDER-HOST/healthz` returns `{"ok":true}` and `https://YOUR-RENDER-HOST/api.php?route=tracks` returns JSON such as `{"tracks":[]}`. The app must receive JSON rather than an HTML challenge page.
 
-## 5. Gmail verification
+## 5. Configure Gmail verification relay
 
-1. Enable 2-Step Verification on the sending Gmail account.
-2. Create a Google App Password at <https://myaccount.google.com/apppasswords>.
-3. Put it in Render as `SMTP_PASSWORD`; don't use your regular Gmail password.
-4. Register using an email address you can access. The six-digit code is sent only to that address, expires after 15 minutes, and is never returned by the API or shown in the app.
-5. If signup reports SMTP failure, inspect the Render service logs. Confirm the App Password and check that the runtime can connect to Gmail SMTP on port 587. If the provider blocks SMTP, use an email provider's HTTPS API instead or move the service to a host that allows outbound SMTP.
+1. Sign in to the Google account that should send verification mail, then open <https://script.google.com> and create a project.
+2. Copy `hosting/render-gmail-relay.gs` into the project's `Code.gs`.
+3. In **Project Settings → Script Properties**, add `GMAIL_BRIDGE_SECRET`. Set its value to a unique random secret of at least 32 characters. Do not put that value in the source file or Git.
+4. In **Deploy → New deployment**, choose **Web app**, set **Execute as** to your account, and set access to **Anyone**. Deploy and authorize the requested Gmail permission. Copy the Web App URL ending in `/exec`.
+5. Add that URL as Render's `GMAIL_BRIDGE_URL` and the exact same secret as `GMAIL_BRIDGE_SECRET`. Save the environment changes and redeploy.
+6. Register using an email address you can access. The six-digit code is sent only to that address, expires after 15 minutes, and is never returned by the API or shown in the app.
+7. If signup reports an email failure, inspect **Executions** in Apps Script and the Render service logs. Confirm the Web App deployment is active, the URL ends in `/exec`, and both secrets match. After changing Apps Script code, create a new deployment version.
 
 ## Notes
 
