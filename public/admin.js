@@ -2,6 +2,9 @@ const loginPanel = document.querySelector("#login-panel");
 const dashboard = document.querySelector("#dashboard");
 const loginForm = document.querySelector("#login-form");
 const loginMessage = document.querySelector("#login-message");
+const loginButton = document.querySelector("#login-button");
+const passwordInput = document.querySelector("#admin-password");
+const passwordToggle = document.querySelector("#password-toggle");
 const uploadForm = document.querySelector("#upload-form");
 const uploadMessage = document.querySelector("#upload-message");
 const uploadButton = document.querySelector("#upload-button");
@@ -12,16 +15,33 @@ const adminList = document.querySelector("#admin-track-list");
 function setAuthenticated(authenticated) {
   loginPanel.classList.toggle("hidden", authenticated);
   dashboard.classList.toggle("hidden", !authenticated);
+  document.querySelector("#admin-account").classList.toggle("hidden", !authenticated);
+  document.querySelector("#sidebar-guest").classList.toggle("hidden", authenticated);
 }
 
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...options.headers },
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Hindi natuloy ang request.");
-  return data;
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers: { ...(options.body instanceof FormData ? {} : { "Content-Type": "application/json" }), ...options.headers },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      if (response.status === 401 && url === "/api/admin/login") {
+        throw new Error("Mali ang admin password. Tingnan at subukan ulit.");
+      }
+      if (response.status === 429) {
+        throw new Error("Sobra na ang login attempts. Maghintay ng 15 minuto bago subukan ulit.");
+      }
+      throw new Error(data.error || "Hindi natuloy ang request.");
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("Hindi makakonekta sa server. Suriin ang internet at subukan ulit.");
+    }
+    throw error;
+  }
 }
 
 async function checkSession() {
@@ -31,13 +51,23 @@ async function checkSession() {
     if (result.authenticated) await loadAdminTracks();
   } catch (error) {
     loginMessage.textContent = error.message;
+    loginMessage.classList.add("is-error");
   }
 }
 
 async function loadAdminTracks() {
-  const { tracks } = await requestJson("/api/tracks");
-  document.querySelector("#track-count").textContent = `${tracks.length} ${tracks.length === 1 ? "kanta" : "kanta"}`;
   adminList.replaceChildren();
+  let tracks;
+  try {
+    ({ tracks } = await requestJson("/api/tracks"));
+  } catch (error) {
+    const message = document.createElement("p");
+    message.className = "muted";
+    message.textContent = error.message;
+    adminList.append(message);
+    return;
+  }
+  document.querySelector("#track-count").textContent = `${tracks.length} kanta`;
   if (!tracks.length) {
     const empty = document.createElement("p");
     empty.className = "muted";
@@ -78,7 +108,16 @@ async function loadAdminTracks() {
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   loginMessage.textContent = "";
-  const password = new FormData(loginForm).get("password");
+  loginMessage.classList.remove("is-error");
+  const password = passwordInput.value;
+  if (!password) {
+    loginMessage.textContent = "Ilagay ang admin password para magpatuloy.";
+    loginMessage.classList.add("is-error");
+    passwordInput.focus();
+    return;
+  }
+  loginButton.disabled = true;
+  loginButton.innerHTML = "<span>Sinusuri…</span><span aria-hidden=\"true\">⋯</span>";
   try {
     await requestJson("/api/admin/login", {
       method: "POST",
@@ -89,7 +128,20 @@ loginForm.addEventListener("submit", async (event) => {
     await loadAdminTracks();
   } catch (error) {
     loginMessage.textContent = error.message;
+    loginMessage.classList.add("is-error");
+    passwordInput.select();
+  } finally {
+    loginButton.disabled = false;
+    loginButton.innerHTML = "<span>Mag-log in</span><span aria-hidden=\"true\">→</span>";
   }
+});
+
+passwordToggle.addEventListener("click", () => {
+  const visible = passwordInput.type === "password";
+  passwordInput.type = visible ? "text" : "password";
+  passwordToggle.textContent = visible ? "Itago" : "Ipakita";
+  passwordToggle.setAttribute("aria-label", visible ? "Itago ang password" : "Ipakita ang password");
+  passwordToggle.setAttribute("aria-pressed", String(visible));
 });
 
 uploadForm.addEventListener("submit", async (event) => {
@@ -122,12 +174,16 @@ fileInput.addEventListener("change", () => {
 });
 
 document.querySelector("#logout").addEventListener("click", async () => {
+  const logoutButton = document.querySelector("#logout");
+  logoutButton.disabled = true;
   try {
     await requestJson("/api/admin/logout", { method: "POST" });
     setAuthenticated(false);
     loginMessage.textContent = "";
   } catch (error) {
     window.alert(error.message);
+  } finally {
+    logoutButton.disabled = false;
   }
 });
 

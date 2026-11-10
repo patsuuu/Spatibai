@@ -8,51 +8,112 @@
   <link rel="stylesheet" href="/styles.css">
   <script src="/admin.js" defer></script>
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/"><span class="brand-mark">♫</span> spatibai</a>
-    <a class="admin-link" href="/">← Tingnan ang library</a>
-  </header>
-  <main class="admin-page">
-    <section class="admin-heading">
-      <p class="eyebrow">SPATIBAI STUDIO</p>
-      <h1>Music <span>management.</span></h1>
-      <p class="hero-copy">Mag-upload ng mga kanta para mapakinggan ng lahat ng bumibisita.</p>
-    </section>
-    <section class="panel" id="login-panel">
-      <h2>Admin login</h2>
-      <p class="muted">Ilagay ang admin password para mapamahalaan ang library.</p>
-      <form id="login-form" class="stack">
-        <label>Password<input type="password" name="password" required autocomplete="current-password"></label>
-        <button class="primary-button" type="submit">Mag-log in</button>
-        <p class="form-message" id="login-message" role="alert"></p>
-      </form>
-    </section>
-    <section class="admin-dashboard hidden" id="dashboard">
-      <section class="panel">
-        <div class="section-heading compact">
-          <div><p class="eyebrow">BAGONG RELEASE</p><h2>Mag-upload ng kanta</h2></div>
-        </div>
-        <form id="upload-form" class="stack">
-          <div class="form-grid">
-            <label>Pamagat ng kanta<input name="title" maxlength="120" placeholder="Hal. Paboritong Kanta" required></label>
-            <label>Artist<input name="artist" maxlength="120" placeholder="Hal. Spatibai Artist"></label>
+<body class="admin-body">
+  <div class="admin-shell">
+    <aside class="admin-sidebar" aria-label="Admin navigation">
+      <a class="brand" href="/" aria-label="Spatibai home">
+        <span class="brand-mark">♫</span><span>spatibai</span>
+      </a>
+      <div class="sidebar-section-label">PAMAMAHALA</div>
+      <nav class="admin-nav">
+        <a class="nav-item active" href="/admin" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">▦</span><span>Admin</span>
+        </a>
+        <a class="nav-item" href="/#library">
+          <span class="nav-icon" aria-hidden="true">♫</span><span>Library</span>
+          <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <p class="sidebar-section-label">ACCOUNT</p>
+        <section class="admin-account hidden" id="admin-account" aria-label="Admin account">
+          <div class="account-identity">
+            <div class="account-avatar" aria-hidden="true">A</div>
+            <div class="account-copy">
+              <strong>Admin account</strong>
+              <span>Spatibai Studio</span>
+            </div>
           </div>
-          <label class="file-picker">Audio file
-            <input id="audio-file" name="audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.weba" required>
-            <span class="file-help" id="file-help">Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).</span>
-          </label>
-          <button class="primary-button" id="upload-button" type="submit">↑ &nbsp; I-upload sa library</button>
-          <p class="form-message" id="upload-message" role="status"></p>
-        </form>
+          <button class="account-logout" id="logout" type="button">
+            <span aria-hidden="true">↪</span> Mag-log out
+          </button>
+        </section>
+        <div class="sidebar-guest" id="sidebar-guest">
+          <span class="guest-lock" aria-hidden="true">◈</span>
+          <span>Mag-log in para pamahalaan ang music library.</span>
+        </div>
+      </div>
+    </aside>
+
+    <main class="admin-main">
+      <section class="admin-login" id="login-panel">
+        <div class="login-intro">
+          <p class="eyebrow">SPATIBAI STUDIO</p>
+          <h1>Magandang tugtog.<br><span>Maayos na library.</span></h1>
+          <p class="login-lead">Mag-log in para mag-upload, mag-ayos, at magtanggal ng mga kantang nasa Spatibai.</p>
+          <div class="login-feature"><span aria-hidden="true">♫</span><span>Isang lugar para sa lahat ng kantang ibinabahagi mo.</span></div>
+        </div>
+        <section class="login-card">
+          <div class="login-card-mark" aria-hidden="true">♬</div>
+          <p class="eyebrow">ADMIN ACCESS</p>
+          <h2>Welcome back</h2>
+          <p class="muted">Ilagay ang admin password para magpatuloy.</p>
+          <form id="login-form" class="stack" novalidate>
+            <label for="admin-password">Admin password</label>
+            <div class="password-field">
+              <input id="admin-password" type="password" name="password" required
+                autocomplete="current-password" placeholder="Ilagay ang iyong password">
+              <button class="password-toggle" id="password-toggle" type="button"
+                aria-label="Ipakita ang password" aria-pressed="false">Ipakita</button>
+            </div>
+            <button class="primary-button login-submit" id="login-button" type="submit">
+              <span>Mag-log in</span><span aria-hidden="true">→</span>
+            </button>
+            <p class="form-message" id="login-message" role="alert" aria-live="polite"></p>
+          </form>
+          <p class="secure-note"><span aria-hidden="true">●</span> Ligtas na koneksyon sa admin</p>
+        </section>
       </section>
-      <section class="panel">
-        <div class="section-heading compact"><div><p class="eyebrow">LIVE SA SITE</p><h2>Mga na-upload</h2></div><span class="count" id="track-count">0 kanta</span></div>
-        <div class="admin-track-list" id="admin-track-list"></div>
+
+      <section class="admin-dashboard hidden" id="dashboard">
+        <header class="dashboard-heading">
+          <div>
+            <p class="eyebrow">SPATIBAI STUDIO / ADMIN</p>
+            <h1>Music <span>management.</span></h1>
+            <p class="hero-copy">I-manage ang mga kantang maririnig sa iyong library.</p>
+          </div>
+          <div class="dashboard-status"><span></span> Admin workspace</div>
+        </header>
+        <div class="dashboard-grid">
+          <section class="panel upload-panel">
+            <div class="section-heading compact">
+              <div><p class="eyebrow">BAGONG RELEASE</p><h2>Mag-upload ng kanta</h2></div>
+              <span class="panel-icon" aria-hidden="true">↑</span>
+            </div>
+            <form id="upload-form" class="stack">
+              <div class="form-grid">
+                <label>Pamagat ng kanta<input name="title" maxlength="120" placeholder="Hal. Paboritong Kanta" required></label>
+                <label>Artist<input name="artist" maxlength="120" placeholder="Hal. Spatibai Artist"></label>
+              </div>
+              <label class="file-picker">Audio file
+                <input id="audio-file" name="audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.weba" required>
+                <span class="file-help" id="file-help">Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).</span>
+              </label>
+              <button class="primary-button upload-submit" id="upload-button" type="submit">↑ &nbsp; I-upload sa library</button>
+              <p class="form-message" id="upload-message" role="status" aria-live="polite"></p>
+            </form>
+          </section>
+          <section class="panel library-panel">
+            <div class="section-heading compact">
+              <div><p class="eyebrow">LIVE SA SITE</p><h2>Music library</h2></div>
+              <span class="count" id="track-count">0 kanta</span>
+            </div>
+            <div class="admin-track-list" id="admin-track-list" aria-live="polite"></div>
+          </section>
+        </div>
+        <p class="dashboard-footnote">Ang mga pagbabagong ginawa rito ay makikita sa public library at sa app pagkatapos mag-sync.</p>
       </section>
-      <button class="text-button" id="logout" type="button">Mag-log out</button>
-    </section>
-  </main>
-  <footer class="site-footer">Spatibai Studio</footer>
+    </main>
+  </div>
 </body>
 </html>
