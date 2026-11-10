@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1165.0",
+    "music-metadata": "^12.3.5",
     "mysql2": "^3.14.1"
   },
   "engines": {

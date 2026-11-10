@@ -87,16 +87,9 @@
               <span class="panel-icon" aria-hidden="true">↑</span>
             </div>
             <form id="upload-form" class="stack">
-              <div class="form-grid">
-                <label>Pamagat ng kanta<input name="title" maxlength="120" placeholder="Hal. Paboritong Kanta" required></label>
-                <label>Artist<input name="artist" maxlength="120" placeholder="Hal. Spatibai Artist"></label>
-              </div>
-              <label>Lyrics (opsyonal)
-                <textarea name="lyrics" maxlength="12000" rows="6" placeholder="Ilagay lang ang lyrics na may pahintulot kang i-publish."></textarea>
-              </label>
-              <label class="file-picker">Audio file
-                <input id="audio-file" name="audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.weba" required>
-                <span class="file-help" id="file-help">Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).</span>
+              <label class="file-picker">Mga audio file
+                <input id="audio-file" name="audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.weba" multiple required>
+                <span class="file-help" id="file-help">Pumili ng hanggang 20 kanta nang sabay-sabay. Awtomatikong babasahin ang title at artist tags; kung wala, gagamitin ang filename (hal. Artist - Title.mp3). Max 100 MB bawat kanta, 500 MB bawat batch.</span>
               </label>
               <p class="storage-notice" id="storage-notice" role="status" aria-live="polite">Sinusuri ang saved-file storage…</p>
               <button class="primary-button upload-submit" id="upload-button" type="submit">↑ &nbsp; I-upload sa library</button>
@@ -111,7 +104,7 @@
             <div class="admin-track-list" id="admin-track-list" aria-live="polite"></div>
           </section>
         </div>
-        <p class="dashboard-footnote">Mag-upload lamang ng sariling kanta o audio na may pahintulot kang ipamahagi. Ang YouTube search sa app ay hiwalay at nagpe-play sa opisyal na YouTube player.</p>
+        <p class="dashboard-footnote">Pumili ng maraming kanta sa isang upload. Awtomatikong babasahin ang title at artist mula sa audio tags; gumamit ng “Artist - Title” na filename kung walang tags. Mag-upload lamang ng sariling kanta o audio na may pahintulot kang ipamahagi.</p>
       </section>
     </main>
   </div>

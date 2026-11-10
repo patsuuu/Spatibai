@@ -203,6 +203,14 @@ passwordToggle.addEventListener("click", () => {
 
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const files = Array.from(fileInput.files);
+  const totalBytes = files.reduce((total, file) => total + file.size, 0);
+  if (!files.length || files.length > 20 || files.some((file) => file.size > 100 * 1024 * 1024) ||
+      totalBytes > 500 * 1024 * 1024) {
+    uploadMessage.textContent = "Pumili ng 1–20 audio file. Max 100 MB bawat kanta at 500 MB ang kabuuan bawat batch.";
+    uploadMessage.classList.add("is-error");
+    return;
+  }
   if (!storageReady) {
     uploadMessage.textContent = "Hindi muna nag-upload para maiwasan ang pagkawala ng file. Ayusin muna ang persistent storage.";
     uploadMessage.classList.add("is-error");
@@ -213,15 +221,30 @@ uploadForm.addEventListener("submit", async (event) => {
   uploadButton.disabled = true;
   uploadButton.textContent = "Ina-upload…";
   try {
-    await requestJson("/api/admin/tracks", {
+    const result = await requestJson("/api/admin/tracks", {
       method: "POST",
       body: new FormData(uploadForm),
     });
     uploadForm.reset();
-    fileHelp.textContent = "Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).";
-    uploadMessage.textContent = storageProvider === "cloudflare-r2"
-      ? "Na-save na ang kanta sa Cloudflare R2 at library."
-      : "Na-save na ang kanta sa server data folder at library.";
+    updateSelectedFiles();
+    uploadMessage.replaceChildren();
+    uploadMessage.classList.toggle("is-error", result.uploaded.length === 0);
+    const summary = document.createElement("p");
+    const storageName = storageProvider === "cloudflare-r2" ? "Cloudflare R2" : "server storage";
+    summary.textContent = `${result.uploaded.length} kanta ang na-save sa ${storageName}.` +
+      (result.failed.length ? ` ${result.failed.length} file ang hindi na-upload.` : "");
+    uploadMessage.append(summary);
+    for (const track of result.uploaded) {
+      const item = document.createElement("p");
+      item.textContent = `✓ ${track.title} — ${track.artist}` +
+        (track.metadataNote ? ` · ${track.metadataNote}` : "");
+      uploadMessage.append(item);
+    }
+    for (const failure of result.failed) {
+      const item = document.createElement("p");
+      item.textContent = `✕ ${failure.file}: ${failure.error}`;
+      uploadMessage.append(item);
+    }
     await loadAdminTracks();
   } catch (error) {
     uploadMessage.textContent = error.message;
@@ -231,12 +254,18 @@ uploadForm.addEventListener("submit", async (event) => {
   }
 });
 
-fileInput.addEventListener("change", () => {
-  const file = fileInput.files[0];
-  fileHelp.textContent = file
-    ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`
-    : "Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).";
-});
+function updateSelectedFiles() {
+  const files = Array.from(fileInput.files);
+  if (!files.length) {
+    fileHelp.textContent = "Pumili ng hanggang 20 kanta nang sabay-sabay. Awtomatikong babasahin ang title at artist tags; kung wala, gagamitin ang filename (hal. Artist - Title.mp3). Max 100 MB bawat kanta, 500 MB bawat batch.";
+    return;
+  }
+  const totalBytes = files.reduce((total, file) => total + file.size, 0);
+  fileHelp.textContent = `${files.length} file · ${(totalBytes / 1024 / 1024).toFixed(1)} MB total` +
+    (files.length > 20 ? " · Hanggang 20 kanta lang bawat batch." : "");
+}
+
+fileInput.addEventListener("change", updateSelectedFiles);
 
 document.querySelector("#logout").addEventListener("click", async () => {
   const logoutButton = document.querySelector("#logout");

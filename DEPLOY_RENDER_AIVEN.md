@@ -35,7 +35,6 @@ The Node.js server supports the Android app's registration, six-digit email veri
    | `R2_ACCESS_KEY_ID` | Access key ID from the R2 API token |
    | `R2_SECRET_ACCESS_KEY` | Secret access key from the R2 API token |
    | `R2_BUCKET_NAME` | Exact name of the private R2 bucket |
-   | `YOUTUBE_API_KEY` | Server-only Google API key restricted to YouTube Data API v3 |
    | `AUDIUS_API_KEY` | Optional Audius API key for previously imported Audius tracks |
 
 5. Paste the CA certificate directly into the Render environment value field. Never send secrets in chat or commit them.
@@ -47,14 +46,9 @@ Audio files are stored under `audio/` in the private R2 bucket, and the admin ca
 
 Cloudflare R2 has a free monthly allowance for standard storage and operations. Usage over the free allowance can be billed; check the current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) and set a Cloudflare billing alert/limit before uploading a large music collection. The admin page checks that the bucket is reachable and disables uploads if storage is not available. Keep a separate backup of important tracks; object storage is not itself a backup.
 
-## 4. Configure YouTube search in the Android app
+## 4. Upload owned or licensed music
 
-1. In Google Cloud Console, create or select a project and enable **YouTube Data API v3**.
-2. Create an API key, restrict it to **YouTube Data API v3**, and store it only in Render's environment as `YOUTUBE_API_KEY`. Never add the key to Android source, the APK, or Git.
-3. Check the project's YouTube Data API quota. Searches use the YouTube Data API search endpoint and can consume quota quickly; the server applies a per-account limit and a shared rolling 80-search-per-24-hours cap to protect the default project quota.
-4. Redeploy the Render service. Signed-in app users can search current videos. Results are not added to the Spatibai catalog or saved as a song cache; playback uses YouTube's official embedded player, with YouTube controls and branding. YouTube availability, embedding permissions, ads, and playback rules remain controlled by YouTube and each video owner.
-
-Admins use `/admin` only to upload audio they own or are licensed to distribute. YouTube search results cannot be imported as audio files or downloaded for offline use.
+Use `/admin` to select and upload up to 20 audio files at once (100 MB per file, 500 MB per batch). The server reads embedded title and artist tags automatically; if tags are missing, it uses an `Artist - Title` filename when possible, otherwise the filename and “Unknown artist.” Each successful file is added to the persistent R2 catalog and synced by the Android app for offline playback. Upload only audio you own or have permission to distribute.
 
 ## 5. Existing Audius imports
 

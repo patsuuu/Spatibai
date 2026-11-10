@@ -209,7 +209,8 @@ audio { display: none; }
 .primary-button { min-height: 47px; padding: 0 19px; border: 0; border-radius: 25px; background: var(--green); color: #0d160f; font-weight: 700; cursor: pointer; }
 .primary-button:hover { background: #54ed86; }
 .primary-button:disabled { opacity: .65; cursor: progress; }
-.form-message { min-height: 18px; margin: -5px 0 0; color: #b8eac7; font-size: 13px; }
+.form-message { min-height: 18px; margin: -5px 0 0; color: #b8eac7; font-size: 13px; line-height: 1.5; }
+.form-message p { margin: 0 0 5px; overflow-wrap: anywhere; }
 .compact { margin-bottom: 18px; align-items: center; }
 .count { color: var(--muted); font-size: 12px; }
 .admin-track-list { border-top: 1px solid var(--line); }
