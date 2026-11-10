@@ -8,9 +8,11 @@ const passwordToggle = document.querySelector("#password-toggle");
 const uploadForm = document.querySelector("#upload-form");
 const uploadMessage = document.querySelector("#upload-message");
 const uploadButton = document.querySelector("#upload-button");
+const storageNotice = document.querySelector("#storage-notice");
 const fileInput = document.querySelector("#audio-file");
 const fileHelp = document.querySelector("#file-help");
 const adminList = document.querySelector("#admin-track-list");
+let storageReady = false;
 
 function setAuthenticated(authenticated) {
   loginPanel.classList.toggle("hidden", authenticated);
@@ -48,10 +50,30 @@ async function checkSession() {
   try {
     const result = await requestJson("/api/admin/session");
     setAuthenticated(result.authenticated);
-    if (result.authenticated) await loadAdminTracks();
+    if (result.authenticated) await Promise.all([loadAdminTracks(), loadAdminStorage()]);
   } catch (error) {
     loginMessage.textContent = error.message;
     loginMessage.classList.add("is-error");
+  }
+}
+
+async function loadAdminStorage() {
+  uploadButton.disabled = true;
+  try {
+    const storage = await requestJson("/api/admin/storage");
+    storageReady = !storage.onRender || storage.dataDirectoryConfigured;
+    storageNotice.classList.toggle("is-warning", !storageReady);
+    storageNotice.textContent = !storage.onRender
+      ? "Ang mga kanta at detalye ay sine-save sa server data folder."
+      : storageReady
+        ? "Naka-configure ang saved-file folder. Tiyaking may Render Persistent Disk na naka-mount sa parehong DATA_DIR path para hindi mawala sa redeploy."
+        : "Hindi ligtas mag-upload: walang DATA_DIR. Mag-set ng Render Persistent Disk at DATA_DIR=/var/data bago mag-upload.";
+  } catch (error) {
+    storageReady = false;
+    storageNotice.classList.add("is-warning");
+    storageNotice.textContent = `Hindi ma-verify ang saved-file storage: ${error.message}`;
+  } finally {
+    uploadButton.disabled = !storageReady;
   }
 }
 
@@ -125,7 +147,7 @@ loginForm.addEventListener("submit", async (event) => {
     });
     loginForm.reset();
     setAuthenticated(true);
-    await loadAdminTracks();
+    await Promise.all([loadAdminTracks(), loadAdminStorage()]);
   } catch (error) {
     loginMessage.textContent = error.message;
     loginMessage.classList.add("is-error");
@@ -146,7 +168,13 @@ passwordToggle.addEventListener("click", () => {
 
 uploadForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!storageReady) {
+    uploadMessage.textContent = "Hindi muna nag-upload para maiwasan ang pagkawala ng file. Ayusin muna ang persistent storage.";
+    uploadMessage.classList.add("is-error");
+    return;
+  }
   uploadMessage.textContent = "";
+  uploadMessage.classList.remove("is-error");
   uploadButton.disabled = true;
   uploadButton.textContent = "Ina-upload…";
   try {
@@ -156,7 +184,7 @@ uploadForm.addEventListener("submit", async (event) => {
     });
     uploadForm.reset();
     fileHelp.textContent = "Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).";
-    uploadMessage.textContent = "Na-upload na! Makikita na ito sa music library.";
+    uploadMessage.textContent = "Na-save na ang kanta sa server files at library.";
     await loadAdminTracks();
   } catch (error) {
     uploadMessage.textContent = error.message;

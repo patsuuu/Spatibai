@@ -353,6 +353,8 @@ audio { display: none; }
 .dashboard-grid .section-heading h2 { font-size: 20px; }
 .panel-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 10px; background: rgba(30,215,96,.1); color: var(--green); font-size: 18px; }
 .upload-submit { width: 100%; }
+.storage-notice { margin: 0; padding: 11px 12px; border: 1px solid #2b4934; border-radius: 10px; background: rgba(30,215,96,.06); color: #a7d6b3; font-size: 11px; line-height: 1.55; }
+.storage-notice.is-warning { border-color: #66512a; background: rgba(255,190,70,.07); color: #f0cd89; }
 .dashboard-footnote { margin: 18px 0; color: #77847a; font-size: 11px; line-height: 1.6; }
 .admin-track { padding: 10px 2px; }
 .admin-track .track-meta { overflow: hidden; }

@@ -594,6 +594,11 @@ async function readForm(req) {
 
 async function uploadTrack(req, res) {
   if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
+  if (process.env.RENDER && !process.env.DATA_DIR?.trim()) {
+    return sendJson(res, 503, {
+      error: "Uploads are paused until a Render Persistent Disk is mounted and DATA_DIR is configured.",
+    });
+  }
   try {
     const { file, title, artist, extension } = await readForm(req);
     const id = crypto.randomUUID();
@@ -736,6 +741,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/admin/session") {
       return sendJson(res, 200, { authenticated: isAdmin(req) });
     }
+    if (req.method === "GET" && pathname === "/api/admin/storage") {
+      if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
+      return sendJson(res, 200, {
+        onRender: Boolean(process.env.RENDER),
+        dataDirectoryConfigured: Boolean(process.env.DATA_DIR?.trim()),
+      });
+    }
     if (req.method === "POST" && pathname === "/api/admin/login") {
       const key = clientKey(req);
       const attempt = loginAttempts.get(key);
@@ -798,6 +810,9 @@ const server = http.createServer(async (req, res) => {
 
 async function start() {
   await fs.mkdir(AUDIO_DIR, { recursive: true });
+  if (process.env.RENDER && !process.env.DATA_DIR?.trim()) {
+    console.warn("DATA_DIR is not set on Render. Uploaded tracks may be lost after a deploy or restart.");
+  }
   if (databaseConfigured) {
     if (!dbPool) {
       throw new Error("Aiven database configuration is incomplete. Set DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, and DB_CA_CERT.");
