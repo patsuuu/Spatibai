@@ -502,10 +502,13 @@ async function logoutUser(req, res) {
 function staticFile(res, pathname) {
   const routes = {
     "/": ["index.html", "text/html; charset=utf-8"],
+    "/library": ["library.html", "text/html; charset=utf-8"],
+    "/library.html": ["library.html", "text/html; charset=utf-8"],
     "/app.html": ["app.html", "text/html; charset=utf-8"],
     "/index.html": ["index.html", "text/html; charset=utf-8"],
     "/admin": ["admin.html", "text/html; charset=utf-8"],
     "/admin.html": ["admin.html", "text/html; charset=utf-8"],
+    "/download/spatibai.apk": ["download/spatibai.apk", "application/vnd.android.package-archive", "Spatibai.apk"],
     "/styles.css": ["styles.css", "text/css; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/admin.js": ["admin.js", "text/javascript; charset=utf-8"],
@@ -515,16 +518,20 @@ function staticFile(res, pathname) {
     sendText(res, 404, "Not found");
     return;
   }
-  const [filename, contentType] = entry;
+  const [filename, contentType, downloadName] = entry;
   const file = path.join(ROOT, "public", filename);
   fs.readFile(file).then((body) => {
-    res.writeHead(200, {
+    const headers = {
       "Content-Type": contentType,
       "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'self'; media-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'",
       "Referrer-Policy": "same-origin",
-    });
+    };
+    if (downloadName) {
+      headers["Content-Disposition"] = `attachment; filename="${downloadName}"`;
+    }
+    res.writeHead(200, headers);
     res.end(body);
   }).catch((error) => {
     console.error("Unable to read website file:", error);

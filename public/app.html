@@ -8,30 +8,70 @@
   <link rel="stylesheet" href="/styles.css">
   <script src="/app.js" defer></script>
 </head>
-<body>
-  <header class="topbar">
-    <a class="brand" href="/app.html" aria-label="Spatibai home"><span class="brand-mark">♫</span> spatibai</a>
-    <span class="admin-link">Music para sa’yo</span>
-  </header>
-  <main class="page">
-    <section class="hero">
-      <div>
-        <p class="eyebrow">MGA KANTANG PINILI PARA SA’YO</p>
-        <h1>Press play.<br><span>Damhin ang tugtog.</span></h1>
-        <p class="hero-copy">Mga bagong tunog, lahat nasa iisang lugar.</p>
+<body class="library-body">
+  <div class="library-shell">
+    <aside class="admin-sidebar" aria-label="Library navigation">
+      <a class="brand" href="/" aria-label="Spatibai home">
+        <span class="brand-mark">♫</span><span>spatibai</span>
+      </a>
+      <div class="sidebar-section-label">PAKIKINIG</div>
+      <nav class="admin-nav">
+        <a class="nav-item active" href="/library.html#library" aria-current="page">
+          <span class="nav-icon" aria-hidden="true">♫</span><span>Library</span>
+        </a>
+        <a class="nav-item" href="/admin">
+          <span class="nav-icon" aria-hidden="true">▦</span><span>Admin</span>
+          <span class="nav-arrow" aria-hidden="true">↗</span>
+        </a>
+      </nav>
+      <div class="sidebar-bottom">
+        <p class="sidebar-section-label">ACCOUNT</p>
+        <section class="admin-account hidden" id="library-admin-account" aria-label="Admin account">
+          <div class="account-identity">
+            <div class="account-avatar" aria-hidden="true">A</div>
+            <div class="account-copy">
+              <strong>Admin account</strong>
+              <span>Spatibai Studio</span>
+            </div>
+          </div>
+          <button class="account-logout" id="library-logout" type="button">
+            <span aria-hidden="true">↪</span> Mag-log out
+          </button>
+        </section>
+        <section class="admin-account" id="library-guest-account" aria-label="Guest account">
+          <div class="account-identity">
+            <div class="account-avatar" aria-hidden="true">♫</div>
+            <div class="account-copy">
+              <strong>Guest listener</strong>
+              <span>Spatibai Library</span>
+            </div>
+          </div>
+          <a class="account-logout guest-admin-link" href="/admin" aria-label="Admin login">
+            <span aria-hidden="true">↗</span> Admin login
+          </a>
+        </section>
       </div>
-      <div class="hero-disc" aria-hidden="true"><span>♫</span></div>
-    </section>
-    <section class="catalog">
-      <div class="section-heading">
-        <div><p class="eyebrow">SPATIBAI LIBRARY</p><h2>Mga kanta</h2></div>
-        <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Maghanap ng kanta o artist" autocomplete="off"></label>
-      </div>
-      <p class="notice" id="notice" role="status">Kinukuha ang music library…</p>
-      <div class="track-list" id="track-list"></div>
-    </section>
-  </main>
-  <footer class="site-footer">Spatibai <span>•</span> Music na ibinahagi ng admin</footer>
+    </aside>
+    <main class="library-main">
+      <header class="library-heading">
+        <div>
+          <p class="eyebrow">SPATIBAI LIBRARY</p>
+          <h1>Mga kanta <span>para sa’yo.</span></h1>
+          <p class="hero-copy">Mga bagong tunog, lahat nasa iisang lugar.</p>
+        </div>
+        <div class="library-heading-mark" aria-hidden="true">♫</div>
+      </header>
+      <section class="catalog" id="library">
+        <div class="section-heading library-section-heading">
+          <div><p class="eyebrow">MGA KANTANG PINILI PARA SA’YO</p><h2>Music library</h2></div>
+          <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Maghanap ng kanta o artist" autocomplete="off"></label>
+        </div>
+        <p class="notice" id="notice" role="status">Kinukuha ang music library…</p>
+        <div class="track-list" id="track-list"></div>
+      </section>
+      <footer class="site-footer">Spatibai <span>•</span> Music na ibinahagi ng admin</footer>
+    </main>
+  </div>
   <aside class="player" aria-label="Music player">
     <div class="now-playing">
       <div class="cover" id="player-cover">♫</div>

@@ -4,6 +4,9 @@ const notice = document.querySelector("#notice");
 const search = document.querySelector("#search");
 const playButton = document.querySelector("#play");
 const seek = document.querySelector("#seek");
+const adminAccount = document.querySelector("#library-admin-account");
+const guestAccount = document.querySelector("#library-guest-account");
+const logoutButton = document.querySelector("#library-logout");
 let tracks = [];
 let currentIndex = -1;
 
@@ -69,6 +72,32 @@ async function loadTracks() {
     notice.classList.remove("hidden");
   }
 }
+
+async function checkAdminSession() {
+  try {
+    const response = await fetch("/api/admin/session", { cache: "no-store" });
+    if (!response.ok) throw new Error("Hindi masuri ang admin session.");
+    const session = await response.json();
+    adminAccount.classList.toggle("hidden", !session.authenticated);
+    guestAccount.classList.toggle("hidden", session.authenticated);
+  } catch (error) {
+    console.warn("Could not check admin session:", error);
+  }
+}
+
+logoutButton.addEventListener("click", async () => {
+  logoutButton.disabled = true;
+  try {
+    const response = await fetch("/api/admin/logout", { method: "POST" });
+    if (!response.ok) throw new Error("Hindi naisagawa ang pag-log out.");
+    adminAccount.classList.add("hidden");
+    guestAccount.classList.remove("hidden");
+  } catch (error) {
+    window.alert(error.message);
+  } finally {
+    logoutButton.disabled = false;
+  }
+});
 
 async function playTrack(index) {
   if (!tracks[index]) return;
@@ -136,4 +165,5 @@ seek.addEventListener("input", () => {
 });
 
 loadTracks();
+checkAdminSession();
 window.setInterval(loadTracks, 30000);

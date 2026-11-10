@@ -405,3 +405,148 @@ audio { display: none; }
   .admin-track { gap: 8px; }
   .delete-button { padding: 7px 8px; }
 }
+
+/* Public library workspace */
+.library-body { min-height: 100vh; padding: 0 0 132px; background: #0c110e; }
+.library-shell { min-height: calc(100vh - 132px); display: grid; grid-template-columns: 252px minmax(0, 1fr); }
+.library-shell .admin-sidebar { align-self: stretch; }
+.library-main { width: min(100%, 1440px); margin: 0 auto; padding: 48px clamp(24px, 5vw, 72px) 28px; }
+.library-heading { min-height: 210px; margin-bottom: 35px; padding: 32px 38px; display: flex; align-items: center; justify-content: space-between; gap: 24px; overflow: hidden; border: 1px solid rgba(255,255,255,.09); border-radius: 22px; background: radial-gradient(ellipse at 86% 50%, rgba(35,183,94,.28), transparent 34%), linear-gradient(120deg, #193c28, #14221a 63%, #18261d); }
+.library-heading .eyebrow { margin-bottom: 12px; }
+.library-heading h1 { margin: 0 0 10px; font-size: clamp(36px, 4.5vw, 56px); line-height: 1.03; letter-spacing: -2.5px; }
+.library-heading h1 span { color: #92e4ad; }
+.library-heading .hero-copy { color: #b7c8bc; font-size: 14px; }
+.library-heading-mark { width: 116px; height: 116px; margin-right: 20px; display: grid; flex: 0 0 auto; place-items: center; border: 1px solid rgba(255,255,255,.14); border-radius: 50%; background: repeating-radial-gradient(circle, #17251c 0 8px, #1d3023 9px 10px); box-shadow: 0 0 50px rgba(30,215,96,.15); color: var(--green); font-size: 38px; transform: rotate(-17deg); }
+.library-section-heading { align-items: center; margin-bottom: 15px; }
+.library-section-heading h2 { font-size: 23px; }
+.library-main .catalog { min-height: 220px; }
+.library-main .track-list { border-top-color: #29352d; }
+.library-main .site-footer { padding: 32px 0 10px; text-align: left; }
+.library-body .player { left: 252px; }
+.guest-admin-link { text-decoration: none; }
+.account-logout:disabled { opacity: .6; cursor: progress; }
+
+@media (max-width: 900px) {
+  .library-shell { grid-template-columns: 220px minmax(0, 1fr); }
+  .library-main { padding: 34px 28px 24px; }
+  .library-heading { min-height: 190px; padding: 28px; }
+  .library-heading-mark { width: 90px; height: 90px; margin-right: 0; font-size: 31px; }
+  .library-body .player { left: 220px; }
+}
+
+@media (max-width: 620px) {
+  .library-body { padding-bottom: 157px; }
+  .library-shell { min-height: calc(100vh - 157px); display: block; }
+  .library-shell .admin-sidebar { align-self: auto; }
+  .library-main { padding: 21px 17px 18px; }
+  .library-heading { min-height: 168px; margin-bottom: 27px; padding: 23px 20px; border-radius: 17px; }
+  .library-heading h1 { font-size: 36px; letter-spacing: -1.7px; }
+  .library-heading .hero-copy { max-width: 225px; font-size: 12px; }
+  .library-heading-mark { width: 70px; height: 70px; margin-right: -6px; font-size: 25px; }
+  .library-section-heading { align-items: stretch; }
+  .library-section-heading h2 { font-size: 21px; }
+  .library-main .site-footer { padding: 25px 0 4px; text-align: center; }
+  .library-body .player { left: 0; }
+}
+
+/* Spatibai download landing page */
+.landing-body { min-height: 100vh; padding: 0; background: #0b100d; }
+.landing-header { width: min(100% - 48px, 1240px); height: 82px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 24px; border-bottom: 1px solid rgba(255,255,255,.07); }
+.landing-header .brand { font-size: 22px; }
+.landing-nav { display: flex; align-items: center; gap: 32px; margin-left: auto; margin-right: 22px; }
+.landing-nav a, .landing-footer a { color: #a7b2aa; font-size: 13px; transition: color .16s ease; }
+.landing-nav a:hover, .landing-footer a:hover { color: var(--green); }
+.landing-header-cta { min-height: 41px; padding: 0 15px; display: inline-flex; align-items: center; gap: 12px; border: 1px solid rgba(30,215,96,.28); border-radius: 22px; background: rgba(30,215,96,.1); color: #b7f4c8; font-size: 12px; font-weight: 700; }
+.landing-header-cta:hover { background: rgba(30,215,96,.18); }
+.landing-header-cta span { font-size: 17px; }
+.landing-main { width: min(100% - 48px, 1240px); margin: 0 auto; }
+.landing-hero { min-height: 560px; padding: 68px 4.5% 55px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .92fr); align-items: center; gap: 40px; }
+.landing-copy { max-width: 620px; position: relative; z-index: 1; }
+.landing-copy .eyebrow { display: flex; align-items: center; gap: 9px; margin-bottom: 23px; }
+.live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 14px rgba(30,215,96,.75); }
+.landing-copy h1 { margin: 0 0 22px; font-size: clamp(48px, 6.5vw, 78px); line-height: .99; letter-spacing: -4px; }
+.landing-copy h1 span { color: #92e4ad; }
+.landing-lead { max-width: 480px; margin: 0; color: #aab8ae; font-size: 16px; line-height: 1.75; }
+.landing-actions { margin-top: 31px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.download-button { min-height: 63px; padding: 9px 19px 9px 11px; display: inline-flex; align-items: center; gap: 13px; border: 1px solid var(--green); border-radius: 14px; background: var(--green); color: #0a140c; box-shadow: 0 12px 32px rgba(30,215,96,.14); transition: transform .16s ease, background .16s ease; }
+.download-button:hover { transform: translateY(-2px); background: #53ed85; }
+.download-icon { width: 41px; height: 41px; display: grid; place-items: center; border-radius: 11px; background: rgba(0,0,0,.1); font-size: 23px; }
+.download-button > span:last-child { display: flex; flex-direction: column; gap: 3px; }
+.download-button strong { font-size: 13px; }
+.download-button small { color: #23442d; font-size: 10px; }
+.library-button { min-height: 48px; padding: 0 12px; display: inline-flex; align-items: center; gap: 11px; color: #d3ddd5; font-size: 13px; font-weight: 600; }
+.library-button:hover { color: var(--green); }
+.library-button span { font-size: 17px; }
+.download-note { margin: 15px 0 0; color: #77847a; font-size: 10px; line-height: 1.6; }
+.landing-art { min-height: 390px; position: relative; display: grid; place-items: center; }
+.art-glow { position: absolute; width: 330px; height: 330px; border-radius: 50%; background: rgba(30,215,96,.12); filter: blur(80px); }
+.art-disc { width: clamp(245px, 30vw, 350px); aspect-ratio: 1; position: relative; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; background: repeating-radial-gradient(circle, #15231a 0 8px, #1d3023 9px 11px); box-shadow: 0 20px 90px rgba(0,0,0,.35), inset 0 0 45px rgba(30,215,96,.06); transform: rotate(-15deg); }
+.art-disc::before, .art-disc::after { content: ""; position: absolute; inset: 12%; border: 1px solid rgba(255,255,255,.06); border-radius: 50%; }
+.art-disc::after { inset: 23%; }
+.art-disc-center { width: 94px; height: 94px; display: grid; place-items: center; border: 8px solid #15231a; border-radius: 50%; background: var(--green); color: #09140c; font-size: 40px; box-shadow: 0 0 42px rgba(30,215,96,.35); }
+.floating-note { position: absolute; display: grid; place-items: center; border: 1px solid rgba(30,215,96,.18); border-radius: 18px; background: rgba(24,38,28,.8); color: #a7f2bd; box-shadow: 0 12px 34px rgba(0,0,0,.25); backdrop-filter: blur(8px); }
+.note-one { width: 51px; height: 51px; top: 15%; right: 12%; font-size: 26px; transform: rotate(9deg); }
+.note-two { width: 43px; height: 43px; bottom: 17%; left: 10%; font-size: 21px; transform: rotate(-8deg); }
+.art-caption { position: absolute; right: 3%; bottom: 9%; display: flex; align-items: center; gap: 10px; color: #829087; font-size: 9px; font-weight: 700; letter-spacing: 1.3px; }
+.art-equalizer { height: 16px; display: flex; align-items: center; gap: 3px; }
+.art-equalizer i { width: 3px; height: 7px; border-radius: 2px; background: var(--green); }
+.art-equalizer i:nth-child(2) { height: 14px; }
+.art-equalizer i:nth-child(3) { height: 10px; }
+.art-equalizer i:nth-child(4) { height: 5px; }
+.landing-features { padding: 0 4.5%; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+.feature-card { min-height: 116px; padding: 21px; display: grid; grid-template-columns: 44px minmax(0, 1fr) 32px; align-items: center; gap: 14px; border: 1px solid #27342b; border-radius: 16px; background: linear-gradient(135deg, #151d17, #111713); }
+.feature-icon { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 13px; background: rgba(30,215,96,.1); color: var(--green); font-size: 20px; }
+.feature-card h2 { margin: 0 0 5px; font-size: 14px; }
+.feature-card p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.feature-card > a { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid #334239; border-radius: 50%; color: #aeb9b1; font-size: 14px; }
+.feature-card > a:hover { border-color: var(--green); color: var(--green); }
+.landing-bottom { min-height: 88px; margin: 48px 4.5% 0; display: flex; align-items: center; gap: 13px; border-top: 1px solid rgba(255,255,255,.07); }
+.landing-bottom .brand-mark { width: 30px; height: 30px; border-radius: 10px; font-size: 20px; }
+.landing-bottom p { margin: 0; color: #87948b; font-size: 11px; }
+.landing-bottom > a { margin-left: auto; color: #b6c1b9; font-size: 11px; }
+.landing-bottom > a:hover { color: var(--green); }
+.landing-bottom > a span { margin-left: 7px; }
+.landing-footer { min-height: 55px; padding: 0 max(24px, calc((100% - 1240px) / 2)); display: flex; align-items: center; gap: 22px; border-top: 1px solid rgba(255,255,255,.055); color: #68746c; font-size: 10px; }
+.landing-footer a { margin-left: auto; font-size: 10px; }
+
+@media (max-width: 800px) {
+  .landing-header, .landing-main { width: min(100% - 34px, 1240px); }
+  .landing-hero { min-height: 0; padding: 62px 2% 44px; grid-template-columns: minmax(0, 1.05fr) minmax(220px, .8fr); gap: 15px; }
+  .landing-copy h1 { font-size: clamp(42px, 7vw, 60px); letter-spacing: -2.7px; }
+  .landing-lead { font-size: 14px; }
+  .landing-art { min-height: 310px; }
+  .art-disc { width: clamp(210px, 32vw, 280px); }
+  .art-disc-center { width: 76px; height: 76px; font-size: 32px; }
+  .landing-features { padding: 0 2%; }
+}
+
+@media (max-width: 560px) {
+  .landing-header { height: 67px; gap: 10px; }
+  .landing-header .brand { gap: 7px; font-size: 18px; }
+  .landing-header .brand-mark { width: 31px; height: 31px; font-size: 21px; }
+  .landing-nav { gap: 13px; margin: 0 0 0 auto; }
+  .landing-nav a { font-size: 11px; }
+  .landing-header-cta { min-height: 35px; padding: 0 10px; gap: 6px; font-size: 10px; }
+  .landing-header-cta span { font-size: 14px; }
+  .landing-hero { padding: 47px 3% 30px; grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .landing-copy h1 { font-size: clamp(43px, 12vw, 60px); letter-spacing: -2.8px; }
+  .landing-lead { max-width: 420px; font-size: 13px; }
+  .landing-actions { margin-top: 23px; gap: 6px; }
+  .download-button { min-height: 56px; padding-right: 13px; }
+  .download-icon { width: 36px; height: 36px; }
+  .library-button { padding: 0 8px; font-size: 11px; }
+  .download-note { max-width: 300px; margin-top: 11px; }
+  .landing-art { min-height: 260px; margin-top: 8px; }
+  .art-disc { width: 220px; }
+  .art-disc-center { width: 66px; height: 66px; border-width: 6px; font-size: 28px; }
+  .art-glow { width: 240px; height: 240px; }
+  .note-one { top: 12%; right: 17%; }
+  .note-two { bottom: 15%; left: 17%; }
+  .art-caption { right: 5%; bottom: 4%; font-size: 8px; }
+  .landing-features { padding: 0 2%; grid-template-columns: 1fr; gap: 10px; }
+  .feature-card { min-height: 96px; padding: 16px; }
+  .landing-bottom { margin: 32px 2% 0; gap: 9px; }
+  .landing-bottom p { font-size: 9px; }
+  .landing-bottom > a { font-size: 9px; }
+  .landing-footer { min-height: 48px; padding: 0 17px; gap: 10px; font-size: 9px; }
+}
