@@ -17,7 +17,7 @@ The development server binds to `0.0.0.0` by default for Render compatibility. T
 
 ## Deploy to Render and Aiven
 
-For the Android app's API, account verification, and Gmail code delivery, use the Node.js backend with Render and Aiven MySQL. Follow `DEPLOY_RENDER_AIVEN.md` for service setup, TLS database connection, environment variables, and updating the app's server URL. Render's local filesystem is temporary; add a paid persistent disk or external object storage to keep uploaded audio and the track catalog. A PHP/MySQL alternative for InfinityFree is documented in `hosting\infinityfree`, but InfinityFree's browser challenge may block requests from the APK.
+For the Android app's API, account verification, and Gmail code delivery, use the Node.js backend with Render and Aiven MySQL. Follow `DEPLOY_RENDER_AIVEN.md` for service setup, TLS database connection, Cloudflare R2 object storage, environment variables, and updating the app's server URL. Render's local filesystem is temporary; the admin uploads are stored in the private R2 bucket so they persist across deploys. R2 has a free monthly allowance; usage beyond it can incur charges. A PHP/MySQL alternative for InfinityFree is documented in `hosting\infinityfree`, but InfinityFree's browser challenge may block requests from the APK.
 
 ## Connect the Android app
 

@@ -5,6 +5,14 @@ const http = require("node:http");
 const path = require("node:path");
 const { pipeline } = require("node:stream/promises");
 const { Readable } = require("node:stream");
+const {
+  DeleteObjectCommand,
+  GetObjectCommand,
+  HeadBucketCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} = require("@aws-sdk/client-s3");
 const mysql = require("mysql2/promise");
 const { promisify } = require("node:util");
 
@@ -12,6 +20,26 @@ const ROOT = __dirname;
 const DATA_DIR = process.env.DATA_DIR || path.join(ROOT, "data");
 const AUDIO_DIR = path.join(DATA_DIR, "audio");
 const TRACKS_FILE = path.join(DATA_DIR, "tracks.json");
+const r2Config = {
+  accountId: process.env.R2_ACCOUNT_ID?.trim(),
+  accessKeyId: process.env.R2_ACCESS_KEY_ID?.trim(),
+  secretAccessKey: process.env.R2_SECRET_ACCESS_KEY?.trim(),
+  bucket: process.env.R2_BUCKET_NAME?.trim(),
+};
+const r2Configured = Object.values(r2Config).every(Boolean);
+const r2PartiallyConfigured = Object.values(r2Config).some(Boolean);
+const r2Client = r2Configured
+  ? new S3Client({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT?.trim() ||
+      `https://${r2Config.accountId}.r2.cloudflarestorage.com`,
+    forcePathStyle: true,
+    credentials: {
+      accessKeyId: r2Config.accessKeyId,
+      secretAccessKey: r2Config.secretAccessKey,
+    },
+  })
+  : null;
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 const ADMIN_PASSWORD = process.env.SPATIBAI_ADMIN_PASSWORD;
@@ -86,6 +114,22 @@ function sendText(res, status, message) {
 }
 
 async function loadTracks() {
+  if (r2Client) {
+    try {
+      const result = await r2Client.send(new GetObjectCommand({
+        Bucket: r2Config.bucket,
+        Key: "tracks.json",
+      }));
+      const tracks = JSON.parse(await result.Body.transformToString("utf-8"));
+      if (!Array.isArray(tracks)) throw new Error("The R2 track catalog is not an array.");
+      return tracks;
+    } catch (error) {
+      if (error.name === "NoSuchKey" || error.name === "NotFound" || error.$metadata?.httpStatusCode === 404) {
+        return [];
+      }
+      throw error;
+    }
+  }
   try {
     const text = await fs.readFile(TRACKS_FILE, "utf8");
     const tracks = JSON.parse(text);
@@ -96,13 +140,71 @@ async function loadTracks() {
   }
 }
 
+async function migrateLocalTracksToR2() {
+  if (!r2Client) return;
+
+  try {
+    await r2Client.send(new HeadObjectCommand({
+      Bucket: r2Config.bucket,
+      Key: "tracks.json",
+    }));
+    return;
+  } catch (error) {
+    if (error.name !== "NoSuchKey" && error.name !== "NotFound" &&
+        error.$metadata?.httpStatusCode !== 404) {
+      console.error("Could not check the Cloudflare R2 catalog before migration:", error);
+      return;
+    }
+  }
+
+  let tracks;
+  try {
+    tracks = JSON.parse(await fs.readFile(TRACKS_FILE, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  if (!Array.isArray(tracks) || tracks.length === 0) return;
+
+  for (const track of tracks) {
+    if (typeof track.filename !== "string" || path.basename(track.filename) !== track.filename) {
+      throw new Error("Cannot migrate a track with an invalid filename.");
+    }
+    const audio = await fs.readFile(path.join(AUDIO_DIR, track.filename));
+    await r2Client.send(new PutObjectCommand({
+      Bucket: r2Config.bucket,
+      Key: `audio/${track.filename}`,
+      Body: audio,
+      ContentType: track.mimeType || "application/octet-stream",
+    }));
+  }
+
+  await r2Client.send(new PutObjectCommand({
+    Bucket: r2Config.bucket,
+    Key: "tracks.json",
+    Body: JSON.stringify(tracks, null, 2),
+    ContentType: "application/json; charset=utf-8",
+  }));
+  console.log(`Migrated ${tracks.length} existing track(s) to Cloudflare R2.`);
+}
+
 function updateTracks(update) {
   const operation = writeQueue.then(async () => {
     const tracks = await loadTracks();
     const result = await update(tracks);
-    const temporary = `${TRACKS_FILE}.${crypto.randomUUID()}.tmp`;
-    await fs.writeFile(temporary, JSON.stringify(tracks, null, 2), { flag: "wx" });
-    await fs.rename(temporary, TRACKS_FILE);
+    const body = JSON.stringify(tracks, null, 2);
+    if (r2Client) {
+      await r2Client.send(new PutObjectCommand({
+        Bucket: r2Config.bucket,
+        Key: "tracks.json",
+        Body: body,
+        ContentType: "application/json; charset=utf-8",
+      }));
+    } else {
+      const temporary = `${TRACKS_FILE}.${crypto.randomUUID()}.tmp`;
+      await fs.writeFile(temporary, body, { flag: "wx" });
+      await fs.rename(temporary, TRACKS_FILE);
+    }
     return result;
   });
   writeQueue = operation.catch(() => {});
@@ -594,17 +696,27 @@ async function readForm(req) {
 
 async function uploadTrack(req, res) {
   if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
-  if (process.env.RENDER && !process.env.DATA_DIR?.trim()) {
+  if (process.env.RENDER && !r2Client) {
     return sendJson(res, 503, {
-      error: "Uploads are paused until a Render Persistent Disk is mounted and DATA_DIR is configured.",
+      error: "Uploads are paused. Configure Cloudflare R2 using R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME.",
     });
   }
   try {
     const { file, title, artist, extension } = await readForm(req);
     const id = crypto.randomUUID();
     const filename = `${id}${extension}`;
-    const destination = path.join(AUDIO_DIR, filename);
-    await fs.writeFile(destination, Buffer.from(await file.arrayBuffer()), { flag: "wx" });
+    const audio = Buffer.from(await file.arrayBuffer());
+    const key = `audio/${filename}`;
+    if (r2Client) {
+      await r2Client.send(new PutObjectCommand({
+        Bucket: r2Config.bucket,
+        Key: key,
+        Body: audio,
+        ContentType: MIME_TYPES[extension],
+      }));
+    } else {
+      await fs.writeFile(path.join(AUDIO_DIR, filename), audio, { flag: "wx" });
+    }
     const track = {
       id,
       title,
@@ -620,7 +732,13 @@ async function uploadTrack(req, res) {
         return track;
       });
     } catch (error) {
-      await fs.unlink(destination).catch(() => {});
+      if (r2Client) {
+        await r2Client.send(new DeleteObjectCommand({ Bucket: r2Config.bucket, Key: key })).catch((cleanupError) => {
+          console.error("Could not remove an unlisted R2 audio upload:", cleanupError);
+        });
+      } else {
+        await fs.unlink(path.join(AUDIO_DIR, filename)).catch(() => {});
+      }
       throw error;
     }
     sendJson(res, 201, { track });
@@ -640,9 +758,16 @@ async function deleteTrack(req, res, id) {
     return found;
   });
   if (!track) return sendJson(res, 404, { error: "Track not found." });
-  await fs.unlink(path.join(AUDIO_DIR, track.filename)).catch((error) => {
-    if (error.code !== "ENOENT") throw error;
-  });
+  if (r2Client) {
+    await r2Client.send(new DeleteObjectCommand({
+      Bucket: r2Config.bucket,
+      Key: `audio/${track.filename}`,
+    }));
+  } else {
+    await fs.unlink(path.join(AUDIO_DIR, track.filename)).catch((error) => {
+      if (error.code !== "ENOENT") throw error;
+    });
+  }
   sendJson(res, 200, { ok: true });
 }
 
@@ -650,6 +775,61 @@ async function serveAudio(req, res, id) {
   const tracks = await loadTracks();
   const track = tracks.find((item) => item.id === id);
   if (!track) return sendText(res, 404, "Audio not found");
+  const range = req.headers.range;
+  const headers = {
+    "Content-Type": track.mimeType,
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "public, max-age=3600",
+    "X-Content-Type-Options": "nosniff",
+  };
+  let start = 0;
+  let end = track.size - 1;
+  let partial = false;
+  if (range) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+    if (!match || (!match[1] && !match[2])) {
+      res.writeHead(416, { ...headers, "Content-Range": `bytes */${track.size}` });
+      return res.end();
+    }
+    if (!match[1]) {
+      const suffixLength = Number(match[2]);
+      start = Math.max(0, track.size - suffixLength);
+    } else {
+      start = Number(match[1]);
+    }
+    end = match[2] && match[1] ? Math.min(Number(match[2]), track.size - 1) : end;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) ||
+        start >= track.size || start > end) {
+      res.writeHead(416, { ...headers, "Content-Range": `bytes */${track.size}` });
+      return res.end();
+    }
+    partial = true;
+  }
+
+  if (r2Client) {
+    let result;
+    try {
+      result = await r2Client.send(new GetObjectCommand({
+        Bucket: r2Config.bucket,
+        Key: `audio/${track.filename}`,
+        ...(partial ? { Range: `bytes=${start}-${end}` } : {}),
+      }));
+    } catch (error) {
+      if (error.name === "NoSuchKey" || error.name === "NotFound" ||
+          error.$metadata?.httpStatusCode === 404) {
+        return sendText(res, 404, "Audio file not found");
+      }
+      throw error;
+    }
+    const responseHeaders = {
+      ...headers,
+      "Content-Length": result.ContentLength ?? end - start + 1,
+    };
+    if (partial) responseHeaders["Content-Range"] = `bytes ${start}-${end}/${track.size}`;
+    res.writeHead(partial ? 206 : 200, responseHeaders);
+    return pipeline(result.Body, res);
+  }
+
   const filename = path.join(AUDIO_DIR, track.filename);
   let stat;
   try {
@@ -658,42 +838,14 @@ async function serveAudio(req, res, id) {
     if (error.code === "ENOENT") return sendText(res, 404, "Audio file not found");
     throw error;
   }
-  const range = req.headers.range;
-  const headers = {
-    "Content-Type": track.mimeType,
-    "Accept-Ranges": "bytes",
-    "Cache-Control": "public, max-age=3600",
-    "X-Content-Type-Options": "nosniff",
-  };
-  if (!range) {
-    res.writeHead(200, { ...headers, "Content-Length": stat.size });
-    return pipeline(fsSync.createReadStream(filename), res);
-  }
-  const match = /^bytes=(\d*)-(\d*)$/.exec(range);
-  if (!match || (!match[1] && !match[2])) {
-    res.writeHead(416, { ...headers, "Content-Range": `bytes */${stat.size}` });
-    return res.end();
-  }
-  let start;
-  let end;
-  if (!match[1]) {
-    const suffixLength = Number(match[2]);
-    start = Math.max(0, stat.size - suffixLength);
-    end = stat.size - 1;
-  } else {
-    start = Number(match[1]);
-    end = match[2] ? Math.min(Number(match[2]), stat.size - 1) : stat.size - 1;
-  }
-  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start >= stat.size || start > end) {
-    res.writeHead(416, { ...headers, "Content-Range": `bytes */${stat.size}` });
-    return res.end();
-  }
-  res.writeHead(206, {
+  end = Math.min(end, stat.size - 1);
+  const responseHeaders = {
     ...headers,
-    "Content-Length": end - start + 1,
-    "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-  });
-  return pipeline(fsSync.createReadStream(filename, { start, end }), res);
+    "Content-Length": partial ? end - start + 1 : stat.size,
+  };
+  if (partial) responseHeaders["Content-Range"] = `bytes ${start}-${end}/${stat.size}`;
+  res.writeHead(partial ? 206 : 200, responseHeaders);
+  return pipeline(fsSync.createReadStream(filename, partial ? { start, end } : {}), res);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -743,10 +895,31 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && pathname === "/api/admin/storage") {
       if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
-      return sendJson(res, 200, {
-        onRender: Boolean(process.env.RENDER),
-        dataDirectoryConfigured: Boolean(process.env.DATA_DIR?.trim()),
-      });
+      if (!r2Client) {
+        return sendJson(res, 200, {
+          onRender: Boolean(process.env.RENDER),
+          provider: "local",
+          configured: false,
+          available: !process.env.RENDER,
+        });
+      }
+      try {
+        await r2Client.send(new HeadBucketCommand({ Bucket: r2Config.bucket }));
+        return sendJson(res, 200, {
+          onRender: Boolean(process.env.RENDER),
+          provider: "cloudflare-r2",
+          configured: true,
+          available: true,
+        });
+      } catch (error) {
+        console.error("Cloudflare R2 storage check failed:", error);
+        return sendJson(res, 200, {
+          onRender: Boolean(process.env.RENDER),
+          provider: "cloudflare-r2",
+          configured: true,
+          available: false,
+        });
+      }
     }
     if (req.method === "POST" && pathname === "/api/admin/login") {
       const key = clientKey(req);
@@ -809,9 +982,20 @@ const server = http.createServer(async (req, res) => {
 });
 
 async function start() {
-  await fs.mkdir(AUDIO_DIR, { recursive: true });
-  if (process.env.RENDER && !process.env.DATA_DIR?.trim()) {
-    console.warn("DATA_DIR is not set on Render. Uploaded tracks may be lost after a deploy or restart.");
+  if (r2PartiallyConfigured && !r2Configured) {
+    throw new Error("Cloudflare R2 configuration is incomplete. Set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME.");
+  }
+  if (process.env.RENDER && !r2Client) {
+    console.warn("Cloudflare R2 is not configured. Admin uploads are disabled to prevent data loss.");
+  }
+  if (!r2Client) {
+    await fs.mkdir(AUDIO_DIR, { recursive: true });
+  } else {
+    try {
+      await migrateLocalTracksToR2();
+    } catch (error) {
+      console.error("Could not migrate existing local tracks to Cloudflare R2:", error);
+    }
   }
   if (databaseConfigured) {
     if (!dbPool) {

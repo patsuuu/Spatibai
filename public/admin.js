@@ -13,6 +13,7 @@ const fileInput = document.querySelector("#audio-file");
 const fileHelp = document.querySelector("#file-help");
 const adminList = document.querySelector("#admin-track-list");
 let storageReady = false;
+let storageProvider = "local";
 
 function setAuthenticated(authenticated) {
   loginPanel.classList.toggle("hidden", authenticated);
@@ -61,13 +62,16 @@ async function loadAdminStorage() {
   uploadButton.disabled = true;
   try {
     const storage = await requestJson("/api/admin/storage");
-    storageReady = !storage.onRender || storage.dataDirectoryConfigured;
+    storageProvider = storage.provider;
+    storageReady = storage.available;
     storageNotice.classList.toggle("is-warning", !storageReady);
-    storageNotice.textContent = !storage.onRender
-      ? "Ang mga kanta at detalye ay sine-save sa server data folder."
+    storageNotice.textContent = storage.provider === "cloudflare-r2"
+      ? storageReady
+        ? "Nakakonekta ang Cloudflare R2. Doon mase-save ang audio at listahan ng kanta kahit mag-deploy o mag-restart ang Render."
+        : "Hindi ma-access ang Cloudflare R2. Tingnan ang bucket name at R2 credentials sa Render bago mag-upload."
       : storageReady
-        ? "Naka-configure ang saved-file folder. Tiyaking may Render Persistent Disk na naka-mount sa parehong DATA_DIR path para hindi mawala sa redeploy."
-        : "Hindi ligtas mag-upload: walang DATA_DIR. Mag-set ng Render Persistent Disk at DATA_DIR=/var/data bago mag-upload.";
+        ? "Ang mga kanta at detalye ay sine-save sa lokal na server data folder."
+        : "Hindi ligtas mag-upload: i-configure ang Cloudflare R2 sa Render bago mag-upload.";
   } catch (error) {
     storageReady = false;
     storageNotice.classList.add("is-warning");
@@ -184,12 +188,14 @@ uploadForm.addEventListener("submit", async (event) => {
     });
     uploadForm.reset();
     fileHelp.textContent = "Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).";
-    uploadMessage.textContent = "Na-save na ang kanta sa server files at library.";
+    uploadMessage.textContent = storageProvider === "cloudflare-r2"
+      ? "Na-save na ang kanta sa Cloudflare R2 at library."
+      : "Na-save na ang kanta sa server data folder at library.";
     await loadAdminTracks();
   } catch (error) {
     uploadMessage.textContent = error.message;
   } finally {
-    uploadButton.disabled = false;
+    uploadButton.disabled = !storageReady;
     uploadButton.innerHTML = "↑ &nbsp; I-upload sa library";
   }
 });

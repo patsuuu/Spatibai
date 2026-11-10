@@ -1,4 +1,4 @@
-# Deploy Spatibai with Render, Aiven, and Gmail
+# Deploy Spatibai with Render, Aiven, Gmail, and Cloudflare R2
 
 The Node.js server supports the Android app's registration, six-digit email verification, login, and logout API. Aiven stores accounts and sessions; Render runs the API and website. Verification mail is sent through a Google Apps Script HTTPS relay, so no Gmail password or SMTP credential is stored in Render.
 
@@ -13,7 +13,11 @@ The Node.js server supports the Android app's registration, six-digit email veri
 
 1. Push this project to a GitHub repository you control.
 2. In Render, create a **Web Service** connected to that repository. Use the repository root as the root directory, `npm ci` as the build command, and `npm start` as the start command. Render supplies `PORT`; the server listens on that port and on `0.0.0.0`.
-3. Set these environment variables in the Render service's **Environment** page:
+3. Before enabling uploads, create a Cloudflare R2 bucket:
+   - In the Cloudflare dashboard, open **R2 Object Storage** and create a private bucket.
+   - Create an R2 API token restricted to that bucket with object read/write permissions. Keep the token secret.
+   - Copy the Cloudflare account ID, access key ID, secret access key, and bucket name. The app uses the S3-compatible endpoint and the `auto` region; do not make the bucket public.
+4. Set these environment variables in the Render service's **Environment** page:
 
    | Key | Value |
    | --- | --- |
@@ -27,16 +31,19 @@ The Node.js server supports the Android app's registration, six-digit email veri
    | `GMAIL_BRIDGE_URL` | The deployed Google Apps Script Web App URL ending in `/exec` |
    | `GMAIL_BRIDGE_SECRET` | The same long random secret stored in the Apps Script project property |
    | `NODE_ENV` | `production` |
-   | `DATA_DIR` | `/var/data` (required with the Persistent Disk below) |
+   | `R2_ACCOUNT_ID` | Cloudflare account ID |
+   | `R2_ACCESS_KEY_ID` | Access key ID from the R2 API token |
+   | `R2_SECRET_ACCESS_KEY` | Secret access key from the R2 API token |
+   | `R2_BUCKET_NAME` | Exact name of the private R2 bucket |
 
-4. Paste the CA certificate directly into the Render environment value field. Never send secrets in chat or commit them.
-5. Deploy and wait for the service to become `Live`. Render's health check can use `/healthz`.
+5. Paste the CA certificate directly into the Render environment value field. Never send secrets in chat or commit them.
+6. Deploy and wait for the service to become `Live`. Render's health check can use `/healthz`.
 
-## 3. Keep uploaded music persistent
+## 3. Keep uploaded music persistent with R2
 
-Render's local filesystem is temporary unless the service has a persistent disk. Before uploading songs, open the Render service's **Disks** settings, attach a persistent disk mounted at `/var/data`, then set `DATA_DIR=/var/data` in the service's **Environment** settings and redeploy. The admin page checks for `DATA_DIR` and disables uploads on Render when it is missing, to avoid silently saving music to temporary storage. When `DATA_DIR` is configured, also verify that the Render disk is mounted at the exact same path. Persistent disks require a paid Render web service and have a separate storage charge. If you use a free service without a disk, use persistent object storage instead.
+Audio files are stored under `audio/` in the private R2 bucket, and the admin catalog is stored as `tracks.json` in that bucket. Render deploys and restarts do not remove R2 objects. On first startup with R2 enabled, the server attempts to copy an existing local catalog and its audio files into R2 if the bucket does not already have `tracks.json`.
 
-The admin uploads both the audio file into `DATA_DIR/audio` and its catalog entry into `DATA_DIR/tracks.json`. These files are kept outside the website source files, so editing or deploying website code will not overwrite them when the persistent disk is mounted correctly. Back up the disk separately; a persistent disk is not a backup.
+Cloudflare R2 has a free monthly allowance for standard storage and operations. Usage over the free allowance can be billed; check the current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) and set a Cloudflare billing alert/limit before uploading a large music collection. The admin page checks that the bucket is reachable and disables uploads if storage is not available. Keep a separate backup of important tracks; object storage is not itself a backup.
 
 ## 4. Point the Android app at Render
 
