@@ -42,12 +42,8 @@ a { color: inherit; text-decoration: none; }
 .brand-mark {
   width: 34px;
   height: 34px;
-  display: grid;
-  place-items: center;
-  color: #0c140e;
-  background: var(--green);
-  border-radius: 12px;
-  font-size: 23px;
+  display: block;
+  object-fit: contain;
 }
 
 .admin-link, .text-button { color: var(--muted); font-size: 13px; }
@@ -394,7 +390,7 @@ audio { display: none; }
   .admin-shell { display: block; }
   .admin-sidebar { position: sticky; z-index: 10; top: 0; height: auto; padding: 11px 15px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; border-right: 0; border-bottom: 1px solid rgba(255,255,255,.08); }
   .admin-sidebar .brand { padding: 0; font-size: 18px; }
-  .admin-sidebar .brand-mark { width: 31px; height: 31px; font-size: 21px; }
+  .admin-sidebar .brand-mark { width: 31px; height: 31px; }
   .admin-sidebar > .sidebar-section-label, .sidebar-bottom > .sidebar-section-label { display: none; }
   .admin-nav { display: flex; justify-content: center; gap: 3px; }
   .nav-item { min-height: 38px; padding: 0 9px; gap: 6px; font-size: 11px; }
@@ -505,7 +501,8 @@ audio { display: none; }
 .art-disc { width: clamp(245px, 30vw, 350px); aspect-ratio: 1; position: relative; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; background: repeating-radial-gradient(circle, #15231a 0 8px, #1d3023 9px 11px); box-shadow: 0 20px 90px rgba(0,0,0,.35), inset 0 0 45px rgba(30,215,96,.06); transform: rotate(-15deg); }
 .art-disc::before, .art-disc::after { content: ""; position: absolute; inset: 12%; border: 1px solid rgba(255,255,255,.06); border-radius: 50%; }
 .art-disc::after { inset: 23%; }
-.art-disc-center { width: 94px; height: 94px; display: grid; place-items: center; border: 8px solid #15231a; border-radius: 50%; background: var(--green); color: #09140c; font-size: 40px; box-shadow: 0 0 42px rgba(30,215,96,.35); }
+.art-disc-center { width: 94px; height: 94px; display: grid; place-items: center; }
+.art-disc-center img { width: 100%; height: 100%; object-fit: contain; }
 .floating-note { position: absolute; display: grid; place-items: center; border: 1px solid rgba(30,215,96,.18); border-radius: 18px; background: rgba(24,38,28,.8); color: #a7f2bd; box-shadow: 0 12px 34px rgba(0,0,0,.25); backdrop-filter: blur(8px); }
 .note-one { width: 51px; height: 51px; top: 15%; right: 12%; font-size: 26px; transform: rotate(9deg); }
 .note-two { width: 43px; height: 43px; bottom: 17%; left: 10%; font-size: 21px; transform: rotate(-8deg); }
@@ -523,7 +520,7 @@ audio { display: none; }
 .feature-card > a { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid #334239; border-radius: 50%; color: #aeb9b1; font-size: 14px; }
 .feature-card > a:hover { border-color: var(--green); color: var(--green); }
 .landing-bottom { min-height: 88px; margin: 48px 4.5% 0; display: flex; align-items: center; gap: 13px; border-top: 1px solid rgba(255,255,255,.07); }
-.landing-bottom .brand-mark { width: 30px; height: 30px; border-radius: 10px; font-size: 20px; }
+.landing-bottom .brand-mark { width: 30px; height: 30px; }
 .landing-bottom p { margin: 0; color: #87948b; font-size: 11px; }
 .landing-bottom > a { margin-left: auto; color: #b6c1b9; font-size: 11px; }
 .landing-bottom > a:hover { color: var(--green); }
@@ -538,14 +535,14 @@ audio { display: none; }
   .landing-lead { font-size: 14px; }
   .landing-art { min-height: 310px; }
   .art-disc { width: clamp(210px, 32vw, 280px); }
-  .art-disc-center { width: 76px; height: 76px; font-size: 32px; }
+  .art-disc-center { width: 76px; height: 76px; }
   .landing-features { padding: 0 2%; }
 }
 
 @media (max-width: 560px) {
   .landing-header { height: 67px; gap: 10px; }
   .landing-header .brand { gap: 7px; font-size: 18px; }
-  .landing-header .brand-mark { width: 31px; height: 31px; font-size: 21px; }
+  .landing-header .brand-mark { width: 31px; height: 31px; }
   .landing-nav { gap: 0; margin: 0 0 0 auto; }
   .landing-nav .admin-login-link { min-height: 36px; padding: 0 10px 0 6px; gap: 6px; font-size: 10px; }
   .admin-login-avatar { width: 24px; height: 24px; }
@@ -558,7 +555,7 @@ audio { display: none; }
   .download-note { max-width: 300px; margin-top: 11px; }
   .landing-art { min-height: 260px; margin-top: 8px; }
   .art-disc { width: 220px; }
-  .art-disc-center { width: 66px; height: 66px; border-width: 6px; font-size: 28px; }
+  .art-disc-center { width: 66px; height: 66px; }
   .art-glow { width: 240px; height: 240px; }
   .note-one { top: 12%; right: 17%; }
   .note-two { bottom: 15%; left: 17%; }

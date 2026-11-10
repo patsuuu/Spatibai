@@ -163,12 +163,11 @@ public class MainActivity extends AppCompatActivity {
         page.setGravity(Gravity.CENTER_HORIZONTAL);
         page.setPadding(dp(28), dp(28), dp(28), dp(24));
 
-        TextView logo = text("♫", 45, GREEN, true);
-        logo.setGravity(Gravity.CENTER);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.spatibai_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
         LinearLayout.LayoutParams logoParams = new LinearLayout.LayoutParams(dp(82), dp(82));
         logoParams.topMargin = dp(48);
-        logo.setBackground(round(GREEN, 24));
-        logo.setTextColor(BACKGROUND);
         page.addView(logo, logoParams);
 
         TextView title = text("Spatibai", 32, Color.WHITE, true);
@@ -540,7 +539,16 @@ public class MainActivity extends AppCompatActivity {
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
 
-        TextView brand = text("♫  Spatibai", 22, GREEN, true);
+        LinearLayout brand = row();
+        brand.setGravity(Gravity.CENTER_VERTICAL);
+        ImageView logo = new ImageView(this);
+        logo.setImageResource(R.drawable.spatibai_logo);
+        logo.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        brand.addView(logo, new LinearLayout.LayoutParams(dp(38), dp(38)));
+        TextView brandName = text("Spatibai", 22, GREEN, true);
+        LinearLayout.LayoutParams brandNameParams = wrap();
+        brandNameParams.leftMargin = dp(8);
+        brand.addView(brandName, brandNameParams);
         LinearLayout.LayoutParams brandParams = wrap();
         brandParams.bottomMargin = dp(14);
         content.addView(brand, brandParams);

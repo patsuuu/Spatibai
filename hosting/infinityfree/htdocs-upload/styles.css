@@ -42,12 +42,8 @@ a { color: inherit; text-decoration: none; }
 .brand-mark {
   width: 34px;
   height: 34px;
-  display: grid;
-  place-items: center;
-  color: #0c140e;
-  background: var(--green);
-  border-radius: 12px;
-  font-size: 23px;
+  display: block;
+  object-fit: contain;
 }
 
 .admin-link, .text-button { color: var(--muted); font-size: 13px; }
