@@ -643,6 +643,7 @@ function staticFile(res, pathname) {
     "/index.html": ["index.html", "text/html; charset=utf-8"],
     "/admin": ["admin.html", "text/html; charset=utf-8"],
     "/admin.html": ["admin.html", "text/html; charset=utf-8"],
+    "/favicon.ico": ["favicon.ico", "image/x-icon"],
     "/download/spatibai.apk": ["download/spatibai.apk", "application/vnd.android.package-archive", "Spatibai.apk"],
     "/styles.css": ["styles.css", "text/css; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
