@@ -647,6 +647,7 @@ function staticFile(res, pathname) {
     "/styles.css": ["styles.css", "text/css; charset=utf-8"],
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/admin.js": ["admin.js", "text/javascript; charset=utf-8"],
+    "/assets/spatibai-logo.png": ["assets/spatibai-logo.png", "image/png"],
   };
   const entry = routes[pathname];
   if (!entry) {
