@@ -11,7 +11,7 @@ $env:SPATIBAI_ADMIN_PASSWORD = "choose-a-long-unique-password"
 npm start
 ```
 
-Open `http://localhost:3000` for the Spatibai home page, `http://localhost:3000/library.html` for the public music library, and `http://localhost:3000/admin` to upload music. The home page provides the Android APK download at `/download/spatibai.apk`. Supported uploads: MP3, M4A, AAC, WAV, OGG, OPUS, FLAC, and WEBM audio; maximum file size is 100 MB. You can add a title and artist, and remove tracks from the admin page.
+Open `http://localhost:3000` for the Spatibai home page, `http://localhost:3000/library.html` for the public music library, and `http://localhost:3000/admin` to upload music. The home page provides the Android APK download at `/download/spatibai.apk`. Supported uploads: MP3, M4A, AAC, WAV, OGG, OPUS, FLAC, and WEBM audio; maximum file size is 100 MB. Admins can add tracks directly from Audius for online streaming, or upload owned/licensed audio, add optional lyrics, edit lyrics later, and remove tracks. Audius audio is not copied or saved offline; check each creator's rights and track license before adding it. Lyrics appear in the APK's expanded now-playing view; publish only lyrics you have permission to share.
 
 The development server binds to `0.0.0.0` by default for Render compatibility. To run it locally for this computer only, set `HOST=127.0.0.1`. Use a unique strong admin password, set `NODE_ENV=production` when HTTPS is configured so the admin session cookie is marked secure, and back up the `data` folder.
 

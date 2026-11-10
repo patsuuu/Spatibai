@@ -12,6 +12,11 @@ const storageNotice = document.querySelector("#storage-notice");
 const fileInput = document.querySelector("#audio-file");
 const fileHelp = document.querySelector("#file-help");
 const adminList = document.querySelector("#admin-track-list");
+const audiusSearchForm = document.querySelector("#audius-search-form");
+const audiusQuery = document.querySelector("#audius-query");
+const audiusSearchButton = document.querySelector("#audius-search-button");
+const audiusMessage = document.querySelector("#audius-message");
+const audiusResults = document.querySelector("#audius-results");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -109,8 +114,38 @@ async function loadAdminTracks() {
     const title = document.createElement("strong");
     title.textContent = track.title;
     const artist = document.createElement("span");
-    artist.textContent = `${track.artist} · ${(track.size / 1024 / 1024).toFixed(1)} MB`;
+    artist.textContent = track.source === "audius"
+      ? `${track.artist} · Audius · Online streaming`
+      : `${track.artist} · ${(track.size / 1024 / 1024).toFixed(1)} MB`;
     meta.append(title, artist);
+    const actions = document.createElement("div");
+    actions.className = "track-actions";
+    const editLyrics = document.createElement("button");
+    editLyrics.type = "button";
+    editLyrics.className = "text-button";
+    editLyrics.textContent = "Lyrics";
+    editLyrics.addEventListener("click", async () => {
+      const lyrics = window.prompt(
+        "Ilagay o i-edit ang lyrics (hanggang 12,000 character). I-publish lamang ang lyrics na may pahintulot ka.",
+        track.lyrics || "",
+      );
+      if (lyrics === null) return;
+      if (lyrics.length > 12000) {
+        window.alert("Hanggang 12,000 character lang ang lyrics.");
+        return;
+      }
+      editLyrics.disabled = true;
+      try {
+        await requestJson(`/api/admin/tracks/${encodeURIComponent(track.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ lyrics }),
+        });
+        await loadAdminTracks();
+      } catch (error) {
+        window.alert(error.message);
+        editLyrics.disabled = false;
+      }
+    });
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "delete-button";
@@ -126,10 +161,83 @@ async function loadAdminTracks() {
         remove.disabled = false;
       }
     });
-    row.append(meta, remove);
+    actions.append(editLyrics, remove);
+    row.append(meta, actions);
     adminList.append(row);
   }
 }
+
+audiusSearchForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  audiusMessage.textContent = "";
+  audiusMessage.classList.remove("is-error");
+  audiusResults.replaceChildren();
+  audiusSearchButton.disabled = true;
+  audiusSearchButton.textContent = "Naghahanap…";
+  try {
+    const { tracks } = await requestJson(
+      `/api/admin/audius/search?q=${encodeURIComponent(audiusQuery.value.trim())}`,
+    );
+    if (!tracks.length) {
+      audiusMessage.textContent = "Walang nahanap na puwedeng i-stream. Subukan ang ibang salita.";
+      return;
+    }
+    for (const track of tracks) {
+      const row = document.createElement("article");
+      row.className = "provider-track";
+      const meta = document.createElement("div");
+      meta.className = "track-meta";
+      const title = document.createElement("strong");
+      title.textContent = track.title;
+      const artist = document.createElement("span");
+      const minutes = Math.floor(track.duration / 60);
+      const seconds = String(track.duration % 60).padStart(2, "0");
+      artist.textContent = `${track.artist} · ${minutes}:${seconds}`;
+      meta.append(title, artist);
+      const actions = document.createElement("div");
+      actions.className = "track-actions";
+      if (track.permalink) {
+        const source = document.createElement("a");
+        source.className = "text-button";
+        source.href = track.permalink;
+        source.target = "_blank";
+        source.rel = "noopener noreferrer";
+        source.textContent = "Audius";
+        actions.append(source);
+      }
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "primary-button provider-add";
+      add.textContent = "Idagdag";
+      add.addEventListener("click", async () => {
+        add.disabled = true;
+        add.textContent = "Idinadagdag…";
+        try {
+          await requestJson("/api/admin/audius/tracks", {
+            method: "POST",
+            body: JSON.stringify({ id: track.id }),
+          });
+          add.textContent = "Naidagdag";
+          await loadAdminTracks();
+        } catch (error) {
+          add.disabled = false;
+          add.textContent = "Idagdag";
+          audiusMessage.textContent = error.message;
+          audiusMessage.classList.add("is-error");
+        }
+      });
+      actions.append(add);
+      row.append(meta, actions);
+      audiusResults.append(row);
+    }
+  } catch (error) {
+    audiusMessage.textContent = error.message;
+    audiusMessage.classList.add("is-error");
+  } finally {
+    audiusSearchButton.disabled = false;
+    audiusSearchButton.textContent = "Maghanap ng music";
+  }
+});
 
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();

@@ -44,6 +44,8 @@ const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 const ADMIN_PASSWORD = process.env.SPATIBAI_ADMIN_PASSWORD;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const AUDIUS_API_BASE = "https://api.audius.co/v1";
+const AUDIUS_API_KEY = process.env.AUDIUS_API_KEY?.trim();
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const AUTH_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const sessions = new Map();
@@ -243,12 +245,12 @@ function clientKey(req) {
   return req.socket.remoteAddress || "unknown";
 }
 
-async function readJson(req) {
+async function readJson(req, maxLength = 8192) {
   const chunks = [];
   let length = 0;
   for await (const chunk of req) {
     length += chunk.length;
-    if (length > 8192) {
+    if (length > maxLength) {
       const error = new Error("Request is too large.");
       error.status = 413;
       throw error;
@@ -268,6 +270,111 @@ function httpError(status, message) {
   const error = new Error(message);
   error.status = status;
   return error;
+}
+
+async function requestAudius(endpoint, params = {}) {
+  const url = new URL(`${AUDIUS_API_BASE}/${endpoint}`);
+  url.searchParams.set("app_name", "Spatibai");
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
+  }
+  const headers = { Accept: "application/json" };
+  if (AUDIUS_API_KEY) headers.Authorization = `Bearer ${AUDIUS_API_KEY}`;
+  let response;
+  try {
+    response = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+  } catch (error) {
+    console.error("Audius API request failed:", error);
+    throw httpError(502, "Hindi makakonekta sa Audius. Subukan ulit mamaya.");
+  }
+  if (!response.ok) {
+    console.error(`Audius API returned HTTP ${response.status} for ${endpoint}.`);
+    throw httpError(502, "Hindi sumagot nang maayos ang Audius. Subukan ulit mamaya.");
+  }
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw httpError(502, "Hindi mabasa ang sagot ng Audius.");
+  }
+  return body.data;
+}
+
+async function searchAudiusTracks(req, res, query) {
+  if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
+  const search = String(query || "").trim();
+  if (search.length < 2 || search.length > 100) {
+    return sendJson(res, 400, { error: "Maglagay ng search term na 2–100 character." });
+  }
+  const data = await requestAudius("tracks/search", { query: search, limit: 15 });
+  if (!Array.isArray(data)) throw httpError(502, "Hindi inaasahang sagot mula sa Audius.");
+  const tracks = data
+    .filter((track) => track.is_streamable === true &&
+      track.is_stream_gated !== true && track.access?.stream === true)
+    .map((track) => {
+      const permalink = typeof track.permalink === "string" &&
+        /^\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(track.permalink)
+        ? `https://audius.co${track.permalink}` : "";
+      return {
+        id: String(track.id || ""),
+        title: String(track.title || "").slice(0, 120),
+        artist: String(track.user?.name || "Audius artist").slice(0, 120),
+        duration: Number(track.duration) || 0,
+        permalink,
+        license: typeof track.license === "string" ? track.license : "",
+      };
+    })
+    .filter((track) => /^[a-zA-Z0-9_-]{1,64}$/.test(track.id) && track.title);
+  sendJson(res, 200, { tracks });
+}
+
+async function addAudiusTrack(req, res) {
+  if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
+  if (process.env.RENDER && !r2Client) {
+    return sendJson(res, 503, {
+      error: "Hindi maidaragdag ang track habang walang persistent catalog storage. I-configure muna ang Cloudflare R2.",
+    });
+  }
+  const body = await readJson(req);
+  const providerTrackId = typeof body.id === "string" ? body.id.trim() : "";
+  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(providerTrackId)) {
+    return sendJson(res, 400, { error: "Invalid Audius track ID." });
+  }
+  const existing = (await loadTracks()).find((track) =>
+    track.source === "audius" && track.providerTrackId === providerTrackId);
+  if (existing) return sendJson(res, 409, { error: "Nasa library na ang kantang ito." });
+  const track = await requestAudius(`tracks/${encodeURIComponent(providerTrackId)}`);
+  if (!track || String(track.id) !== providerTrackId) {
+    return sendJson(res, 404, { error: "Hindi mahanap ang Audius track." });
+  }
+  if (track.is_streamable !== true || track.is_stream_gated === true ||
+      track.access?.stream !== true) {
+    return sendJson(res, 403, { error: "Hindi puwedeng i-stream sa Spatibai ang track na ito." });
+  }
+  const imported = {
+    id: crypto.randomUUID(),
+    title: String(track.title || "").trim().slice(0, 120),
+    artist: String(track.user?.name || "Audius artist").trim().slice(0, 120),
+    lyrics: "",
+    source: "audius",
+    providerTrackId,
+    providerUrl: typeof track.permalink === "string" &&
+      /^\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(track.permalink)
+      ? `https://audius.co${track.permalink}` : "",
+    providerLicense: track.license ?? null,
+    duration: Number(track.duration) || 0,
+    uploadedAt: new Date().toISOString(),
+  };
+  if (!imported.title) return sendJson(res, 400, { error: "Walang pamagat ang track na ito." });
+  await updateTracks((tracks) => {
+    if (tracks.some((item) =>
+      item.source === "audius" && item.providerTrackId === providerTrackId)) {
+      throw httpError(409, "Nasa library na ang kantang ito.");
+    }
+    tracks.unshift(imported);
+    return imported;
+  });
+  sendJson(res, 201, { track: imported });
 }
 
 function requireDatabase() {
@@ -686,12 +793,18 @@ async function readForm(req) {
   }
   const title = String(form.get("title") || "").trim();
   const artist = String(form.get("artist") || "").trim();
+  const lyrics = String(form.get("lyrics") || "").trim();
   if (!title || title.length > 120 || artist.length > 120) {
     const error = new Error("Add a title (up to 120 characters) and an artist up to 120 characters.");
     error.status = 400;
     throw error;
   }
-  return { file, title, artist: artist || "Spatibai artist", extension };
+  if (lyrics.length > 12000) {
+    const error = new Error("Lyrics must be 12,000 characters or fewer.");
+    error.status = 400;
+    throw error;
+  }
+  return { file, title, artist: artist || "Spatibai artist", lyrics, extension };
 }
 
 async function uploadTrack(req, res) {
@@ -702,7 +815,7 @@ async function uploadTrack(req, res) {
     });
   }
   try {
-    const { file, title, artist, extension } = await readForm(req);
+    const { file, title, artist, lyrics, extension } = await readForm(req);
     const id = crypto.randomUUID();
     const filename = `${id}${extension}`;
     const audio = Buffer.from(await file.arrayBuffer());
@@ -721,6 +834,7 @@ async function uploadTrack(req, res) {
       id,
       title,
       artist,
+      lyrics,
       filename,
       mimeType: MIME_TYPES[extension],
       size: file.size,
@@ -749,6 +863,22 @@ async function uploadTrack(req, res) {
   }
 }
 
+async function updateTrackLyrics(req, res, id) {
+  if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
+  const body = await readJson(req, 65536);
+  if (typeof body.lyrics !== "string" || body.lyrics.length > 12000) {
+    return sendJson(res, 400, { error: "Lyrics must be text with up to 12,000 characters." });
+  }
+  const track = await updateTracks((tracks) => {
+    const found = tracks.find((item) => item.id === id);
+    if (!found) return null;
+    found.lyrics = body.lyrics.trim();
+    return found;
+  });
+  if (!track) return sendJson(res, 404, { error: "Track not found." });
+  sendJson(res, 200, { track });
+}
+
 async function deleteTrack(req, res, id) {
   if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
   const track = await updateTracks((tracks) => {
@@ -758,6 +888,10 @@ async function deleteTrack(req, res, id) {
     return found;
   });
   if (!track) return sendJson(res, 404, { error: "Track not found." });
+  if (track.source === "audius") {
+    sendJson(res, 200, { ok: true });
+    return;
+  }
   if (r2Client) {
     await r2Client.send(new DeleteObjectCommand({
       Bucket: r2Config.bucket,
@@ -775,6 +909,23 @@ async function serveAudio(req, res, id) {
   const tracks = await loadTracks();
   const track = tracks.find((item) => item.id === id);
   if (!track) return sendText(res, 404, "Audio not found");
+  if (track.source === "audius") {
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(track.providerTrackId || "")) {
+      return sendText(res, 502, "Invalid Audius track reference");
+    }
+    const streamUrl = new URL(
+      `${AUDIUS_API_BASE}/tracks/${encodeURIComponent(track.providerTrackId)}/stream`,
+    );
+    streamUrl.searchParams.set("app_name", "Spatibai");
+    if (AUDIUS_API_KEY) streamUrl.searchParams.set("api_key", AUDIUS_API_KEY);
+    res.writeHead(302, {
+      Location: streamUrl.toString(),
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    res.end();
+    return;
+  }
   const range = req.headers.range;
   const headers = {
     "Content-Type": track.mimeType,
@@ -893,6 +1044,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/admin/session") {
       return sendJson(res, 200, { authenticated: isAdmin(req) });
     }
+    if (req.method === "GET" && pathname === "/api/admin/audius/search") {
+      return await searchAudiusTracks(req, res, url.searchParams.get("q"));
+    }
+    if (req.method === "POST" && pathname === "/api/admin/audius/tracks") {
+      return await addAudiusTrack(req, res);
+    }
     if (req.method === "GET" && pathname === "/api/admin/storage") {
       if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
       if (!r2Client) {
@@ -963,6 +1120,9 @@ const server = http.createServer(async (req, res) => {
       return await uploadTrack(req, res);
     }
     const deleteMatch = /^\/api\/admin\/tracks\/([0-9a-f-]{36})$/.exec(pathname);
+    if (req.method === "PATCH" && deleteMatch) {
+      return await updateTrackLyrics(req, res, deleteMatch[1]);
+    }
     if (req.method === "DELETE" && deleteMatch) {
       return await deleteTrack(req, res, deleteMatch[1]);
     }

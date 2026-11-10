@@ -81,6 +81,22 @@
           <div class="dashboard-status"><span></span> Admin workspace</div>
         </header>
         <div class="dashboard-grid">
+          <section class="panel audius-panel">
+            <div class="section-heading compact">
+              <div><p class="eyebrow">OPEN MUSIC CATALOG</p><h2>Maghanap sa Audius</h2></div>
+              <span class="panel-icon" aria-hidden="true">⌕</span>
+            </div>
+            <form id="audius-search-form" class="stack">
+              <label>Artist o pamagat
+                <input id="audius-query" type="search" maxlength="100" minlength="2"
+                  placeholder="Hal. ambient, indie, artist name" required>
+              </label>
+              <button class="primary-button" id="audius-search-button" type="submit">Maghanap ng music</button>
+              <p class="form-message" id="audius-message" role="status" aria-live="polite"></p>
+            </form>
+            <div class="provider-track-list" id="audius-results" aria-live="polite"></div>
+            <p class="provider-note">Streaming lang mula sa Audius; hindi kinokopya o sini-save offline ang audio. Suriin ang pahintulot at lisensya ng creator bago idagdag. Hindi kasama rito ang buong Spotify catalog.</p>
+          </section>
           <section class="panel upload-panel">
             <div class="section-heading compact">
               <div><p class="eyebrow">BAGONG RELEASE</p><h2>Mag-upload ng kanta</h2></div>
@@ -91,6 +107,9 @@
                 <label>Pamagat ng kanta<input name="title" maxlength="120" placeholder="Hal. Paboritong Kanta" required></label>
                 <label>Artist<input name="artist" maxlength="120" placeholder="Hal. Spatibai Artist"></label>
               </div>
+              <label>Lyrics (opsyonal)
+                <textarea name="lyrics" maxlength="12000" rows="6" placeholder="Ilagay lang ang lyrics na may pahintulot kang i-publish."></textarea>
+              </label>
               <label class="file-picker">Audio file
                 <input id="audio-file" name="audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.weba" required>
                 <span class="file-help" id="file-help">Pumili ng MP3, M4A, AAC, WAV, OGG, OPUS, FLAC o WEBM (max 100 MB).</span>

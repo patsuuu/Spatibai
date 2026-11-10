@@ -1,6 +1,5 @@
 package com.example.spatibai;
 
-import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -10,7 +9,6 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Bundle;
-import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -19,7 +17,7 @@ import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.ProgressBar;
+import android.widget.SeekBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -30,8 +28,6 @@ import android.webkit.WebViewClient;
 
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.activity.result.ActivityResultLauncher;
-import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -61,17 +57,28 @@ public class MainActivity extends AppCompatActivity {
     private static final int GREEN = Color.rgb(29, 215, 96);
     private static final String DEFAULT_SERVER_URL = "https://spatibai.onrender.com";
     private SharedPreferences preferences;
-    private final ArrayList<Track> tracks = new ArrayList<>();
     private final ArrayList<Track> onlineTracks = new ArrayList<>();
+    private final ArrayList<Playlist> playlists = new ArrayList<>();
     private MediaPlayer mediaPlayer;
-    private ProgressBar miniProgressBar;
+    private SeekBar miniSeekBar;
+    private TextView miniElapsedTime;
+    private TextView miniDurationTime;
+    private TextView fullElapsedTime;
+    private TextView fullDurationTime;
+    private TextView miniRepeatButton;
+    private TextView fullRepeatButton;
+    private SeekBar fullSeekBar;
     private int currentTrack = -1;
+    private int repeatMode;
+    private String playbackPlaylistId;
     private boolean isPlaying = false;
     private boolean playerPrepared = false;
+    private boolean isSeeking;
     private boolean offlineOnly = false;
     private String activeTab = "Home";
+    private String activePlaylistId;
+    private boolean fullPlayerOpen;
     private String homeSearchQuery = "";
-    private ActivityResultLauncher<Intent> audioPicker;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService authExecutor = Executors.newSingleThreadExecutor();
@@ -104,14 +111,9 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setStatusBarColor(BACKGROUND);
         getWindow().setNavigationBarColor(BACKGROUND);
         preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
-        restoreTracks();
+        repeatMode = Math.max(0, Math.min(2, preferences.getInt("repeat_mode", 0)));
         restoreOnlineTracks();
-        audioPicker = registerForActivityResult(
-                new ActivityResultContracts.StartActivityForResult(), result -> {
-                    if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                        importSelectedAudio(result.getData());
-                    }
-                });
+        restorePlaylists();
         String authToken = preferences.getString("auth_token", "");
         if (authToken.isEmpty()) {
             preferences.edit().remove("logged_in").remove("password_hash").apply();
@@ -131,6 +133,7 @@ public class MainActivity extends AppCompatActivity {
                         .putString("email", response.optString("email", ""))
                         .putBoolean("logged_in", true)
                         .apply();
+                restorePlaylists();
                 showHome();
                 refreshOnlineTracks(false);
                 mainHandler.removeCallbacks(syncRunnable);
@@ -264,6 +267,7 @@ public class MainActivity extends AppCompatActivity {
                                 .putString("auth_token", token)
                                 .putBoolean("logged_in", true)
                                 .apply();
+                        restorePlaylists();
                         showHome();
                         refreshOnlineTracks(false);
                         mainHandler.removeCallbacks(syncRunnable);
@@ -705,12 +709,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showLibrary() {
+        activeTab = "Library";
+        activePlaylistId = null;
         LinearLayout root = page();
         root.setPadding(0, dp(20), 0, 0);
         TextView title = text("Ang library mo", 27, Color.WHITE, true);
         title.setPadding(dp(20), 0, dp(20), 0);
         root.addView(title);
-        TextView intro = text("Mga kantang handa para sa susunod mong mood.", 14, MUTED, false);
+        TextView intro = text("Mga playlist at kantang handa para sa susunod mong mood.", 14, MUTED, false);
         intro.setPadding(dp(20), 0, dp(20), 0);
         LinearLayout.LayoutParams introParams = wrap();
         introParams.topMargin = dp(8);
@@ -727,6 +733,33 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        LinearLayout playlistHeading = row();
+        playlistHeading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView playlistTitle = text("Mga playlist", 20, Color.WHITE, true);
+        playlistHeading.addView(playlistTitle, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView create = text("+ Gumawa", 14, GREEN, true);
+        create.setGravity(Gravity.CENTER);
+        playlistHeading.addView(create, wrap());
+        create.setOnClickListener(v -> showCreatePlaylistDialog());
+        content.addView(playlistHeading, matchWrap());
+        if (playlists.isEmpty()) {
+            TextView emptyPlaylists = text("Gumawa ng playlist at idagdag dito ang mga paborito mong kanta.", 13, MUTED, false);
+            emptyPlaylists.setPadding(dp(14), dp(12), dp(14), dp(12));
+            emptyPlaylists.setBackground(round(SURFACE, 12));
+            LinearLayout.LayoutParams emptyParams = matchWrap();
+            emptyParams.topMargin = dp(10);
+            content.addView(emptyPlaylists, emptyParams);
+        } else {
+            for (Playlist playlist : new ArrayList<>(playlists)) {
+                content.addView(playlistRow(playlist));
+            }
+        }
+        TextView songsTitle = text("Mga kanta", 20, Color.WHITE, true);
+        LinearLayout.LayoutParams songsTitleParams = matchWrap();
+        songsTitleParams.topMargin = dp(22);
+        songsTitleParams.bottomMargin = dp(8);
+        content.addView(songsTitle, songsTitleParams);
         if (visibleTracks.isEmpty()) {
             TextView empty = text("Wala pang kanta sa library. Lalabas dito ang mga kantang available mula sa online catalog.", 14, MUTED, false);
             empty.setPadding(dp(16), dp(18), dp(16), dp(18));
@@ -754,6 +787,11 @@ public class MainActivity extends AppCompatActivity {
             item.setContentDescription(label + (label.equals(activeTab) ? ", napili" : ""));
             nav.addView(item, new LinearLayout.LayoutParams(0, dp(52), 1));
             item.setOnClickListener(v -> {
+                fullPlayerOpen = false;
+                fullSeekBar = null;
+                fullElapsedTime = null;
+                fullDurationTime = null;
+                fullRepeatButton = null;
                 if ("Settings".equals(label)) {
                     activeTab = "Settings";
                     showServerSettings();
@@ -787,7 +825,7 @@ public class MainActivity extends AppCompatActivity {
             } else if (offlineOnly) {
                 message = "Wala pang kantang naka-save offline. Kumonekta sa internet at i-refresh ang library para ma-download ang mga kanta.";
             } else {
-                message = "Wala pang kanta sa library. Maghintay ng upload ng admin o mag-import ng sarili mong music.";
+                message = "Wala pang kanta sa library. Lalabas dito ang mga kantang in-upload ng admin.";
             }
             TextView empty = text(message, 14, MUTED, false);
             empty.setPadding(dp(16), dp(18), dp(16), dp(18));
@@ -797,6 +835,10 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private View songRow(int index) {
+        return songRow(index, null);
+    }
+
+    private View songRow(int index, Playlist playlist) {
         ArrayList<Track> library = allTracks();
         if (index < 0 || index >= library.size()) return new View(this);
         Track track = library.get(index);
@@ -810,15 +852,468 @@ public class MainActivity extends AppCompatActivity {
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.VERTICAL);
         details.addView(text(track.title, 15, Color.WHITE, true));
-        details.addView(text(track.artist + (track.isCached() ? " · Offline" : ""), 13, MUTED, false));
+        String trackSubtitle = track.artist + (track.isCached() ? " · Offline" :
+                track.isAudius() ? " · Audius · Online lang" : "");
+        details.addView(text(trackSubtitle, 13, MUTED, false));
         LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(0, -2, 1);
         detailsParams.leftMargin = dp(12);
         item.addView(details, detailsParams);
         TextView play = text(index == currentTrack && isPlaying ? "Ⅱ" : "▶", 16, GREEN, true);
         play.setGravity(Gravity.CENTER);
         item.addView(play, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        item.setOnClickListener(v -> playTrack(index));
+        TextView action = text(playlist == null ? "+" : "−", 22,
+                playlist == null ? MUTED : Color.rgb(235, 105, 105), true);
+        action.setGravity(Gravity.CENTER);
+        action.setContentDescription(playlist == null ? "Idagdag sa playlist" : "Alisin sa playlist");
+        item.addView(action, new LinearLayout.LayoutParams(dp(38), dp(48)));
+        action.setOnClickListener(v -> {
+            if (playlist == null) addTrackToPlaylistDialog(track);
+            else removeTrackFromPlaylist(playlist, track);
+        });
+        item.setOnClickListener(v -> {
+            if (playlist == null) playTrack(index);
+            else playPlaylist(playlist, track.id);
+        });
         return item;
+    }
+
+    private View playlistRow(Playlist playlist) {
+        LinearLayout card = row();
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(12), dp(10), dp(8), dp(10));
+        card.setBackground(round(SURFACE, 12));
+        TextView cover = text("♫", 22, GREEN, true);
+        cover.setGravity(Gravity.CENTER);
+        cover.setBackground(round(Color.rgb(38, 59, 45), 10));
+        card.addView(cover, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        details.addView(text(playlist.name, 15, Color.WHITE, true));
+        details.addView(text(playlist.tracks.size() + " kanta", 12, MUTED, false));
+        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        detailsParams.leftMargin = dp(12);
+        card.addView(details, detailsParams);
+        TextView more = text("⋮", 22, MUTED, true);
+        more.setGravity(Gravity.CENTER);
+        card.addView(more, new LinearLayout.LayoutParams(dp(40), dp(48)));
+        more.setOnClickListener(v -> showPlaylistOptions(playlist));
+        card.setOnClickListener(v -> showPlaylist(playlist));
+        LinearLayout.LayoutParams cardParams = matchWrap();
+        cardParams.topMargin = dp(8);
+        card.setLayoutParams(cardParams);
+        return card;
+    }
+
+    private void showCreatePlaylistDialog() {
+        EditText nameInput = input("Pangalan ng playlist", false);
+        nameInput.setPadding(dp(16), 0, dp(16), 0);
+        new AlertDialog.Builder(this)
+                .setTitle("Bagong playlist")
+                .setView(nameInput)
+                .setNegativeButton("Kanselahin", null)
+                .setPositiveButton("Gumawa", (dialog, which) -> {
+                    String name = nameInput.getText().toString().trim();
+                    if (name.isEmpty() || name.length() > 40) {
+                        toast("Ilagay ang pangalan na 1–40 character.");
+                        return;
+                    }
+                    Playlist playlist = new Playlist(
+                            java.util.UUID.randomUUID().toString(), name, new ArrayList<>());
+                    playlists.add(playlist);
+                    persistPlaylists();
+                    activeTab = "Library";
+                    showLibrary();
+                    showPlaylist(playlist);
+                })
+                .show();
+    }
+
+    private void showPlaylist(Playlist playlist) {
+        if (!playlists.contains(playlist)) return;
+        activeTab = "Library";
+        activePlaylistId = playlist.id;
+        LinearLayout root = page();
+        root.setPadding(0, dp(18), 0, 0);
+        LinearLayout heading = row();
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        TextView back = text("‹", 32, Color.WHITE, true);
+        back.setGravity(Gravity.CENTER);
+        heading.addView(back, new LinearLayout.LayoutParams(dp(52), dp(48)));
+        back.setOnClickListener(v -> showLibrary());
+        TextView title = text(playlist.name, 24, Color.WHITE, true);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        heading.addView(title, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView more = text("⋮", 24, MUTED, true);
+        more.setGravity(Gravity.CENTER);
+        heading.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        more.setOnClickListener(v -> showPlaylistOptions(playlist));
+        root.addView(heading, matchWrap());
+
+        ArrayList<Integer> trackIndexes = playlistTrackIndexes(playlist);
+        LinearLayout actions = row();
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(dp(18), dp(12), dp(18), dp(12));
+        Button playAll = button("▶  I-play ang playlist", true);
+        actions.addView(playAll, new LinearLayout.LayoutParams(0, dp(48), 1));
+        playAll.setOnClickListener(v -> {
+            if (trackIndexes.isEmpty()) {
+                toast("Wala pang kantang available sa playlist na ito.");
+            } else {
+                playPlaylist(playlist, null);
+            }
+        });
+        root.addView(actions, matchWrap());
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(true);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(20), 0, dp(20), dp(12));
+        scroll.addView(content);
+        root.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        TextView addSongs = text("+  Magdagdag ng mga kanta", 14, GREEN, true);
+        addSongs.setPadding(dp(4), dp(10), 0, dp(12));
+        content.addView(addSongs, matchWrap());
+        addSongs.setOnClickListener(v -> showAddSongsDialog(playlist));
+        if (trackIndexes.isEmpty()) {
+            TextView empty = text("Wala pang kanta rito. Pindutin ang “Magdagdag ng mga kanta” para pumili sa library.", 14, MUTED, false);
+            empty.setPadding(dp(14), dp(14), dp(14), dp(14));
+            empty.setBackground(round(SURFACE, 12));
+            content.addView(empty, matchWrap());
+        } else {
+            ArrayList<Track> library = allTracks();
+            for (int index : trackIndexes) content.addView(songRow(index, playlist));
+        }
+        addMiniPlayer(root);
+        addBottomNav(root);
+        setContentView(root);
+    }
+
+    private void showAddSongsDialog(Playlist playlist) {
+        ArrayList<Track> library = allTracks();
+        if (library.isEmpty()) {
+            toast("Wala pang kantang idaragdag.");
+            return;
+        }
+        String[] titles = new String[library.size()];
+        boolean[] selected = new boolean[library.size()];
+        for (int i = 0; i < library.size(); i++) {
+            Track track = library.get(i);
+            titles[i] = track.title + " — " + track.artist +
+                    (playlist.tracks.contains(track.id) ? "  ✓" : "");
+            selected[i] = playlist.tracks.contains(track.id);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Pumili ng kanta")
+                .setMultiChoiceItems(titles, selected, (dialog, which, checked) -> {
+                    selected[which] = checked;
+                })
+                .setNegativeButton("Kanselahin", null)
+                .setPositiveButton("Idagdag", (dialog, which) -> {
+                    for (int i = 0; i < selected.length; i++) {
+                        String id = library.get(i).id;
+                        if (selected[i] && !playlist.tracks.contains(id)) playlist.tracks.add(id);
+                    }
+                    persistPlaylists();
+                    showPlaylist(playlist);
+                })
+                .show();
+    }
+
+    private void addTrackToPlaylistDialog(Track track) {
+        if (playlists.isEmpty()) {
+            showCreatePlaylistDialog();
+            return;
+        }
+        String[] names = new String[playlists.size() + 1];
+        for (int i = 0; i < playlists.size(); i++) names[i] = playlists.get(i).name;
+        names[names.length - 1] = "+ Gumawa ng playlist";
+        new AlertDialog.Builder(this)
+                .setTitle("Idagdag sa playlist")
+                .setItems(names, (dialog, which) -> {
+                    if (which == playlists.size()) {
+                        showCreatePlaylistDialog();
+                        return;
+                    }
+                    Playlist playlist = playlists.get(which);
+                    if (playlist.tracks.contains(track.id)) {
+                        toast("Nasa playlist na ang kantang ito.");
+                        return;
+                    }
+                    playlist.tracks.add(track.id);
+                    persistPlaylists();
+                    toast("Idinagdag sa " + playlist.name + ".");
+                    if (activePlaylistId != null && activePlaylistId.equals(playlist.id)) {
+                        showPlaylist(playlist);
+                    } else if ("Library".equals(activeTab)) {
+                        showLibrary();
+                    }
+                })
+                .show();
+    }
+
+    private void removeTrackFromPlaylist(Playlist playlist, Track track) {
+        playlist.tracks.remove(track.id);
+        persistPlaylists();
+        showPlaylist(playlist);
+    }
+
+    private void showPlaylistOptions(Playlist playlist) {
+        String[] options = {"Palitan ang pangalan", "Burahin ang playlist"};
+        new AlertDialog.Builder(this)
+                .setTitle(playlist.name)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) showRenamePlaylistDialog(playlist);
+                    else new AlertDialog.Builder(this)
+                            .setTitle("Burahin ang playlist?")
+                            .setMessage("Hindi mabubura ang mga kanta sa library.")
+                            .setNegativeButton("Kanselahin", null)
+                            .setPositiveButton("Burahin", (confirm, selected) -> {
+                                playlists.remove(playlist);
+                                if (playlist.id.equals(playbackPlaylistId)) playbackPlaylistId = null;
+                                if (playlist.id.equals(activePlaylistId)) activePlaylistId = null;
+                                persistPlaylists();
+                                showLibrary();
+                            })
+                            .show();
+                })
+                .show();
+    }
+
+    private void showRenamePlaylistDialog(Playlist playlist) {
+        EditText nameInput = input("Pangalan ng playlist", false);
+        nameInput.setText(playlist.name);
+        nameInput.setSelection(nameInput.length());
+        new AlertDialog.Builder(this)
+                .setTitle("Palitan ang pangalan")
+                .setView(nameInput)
+                .setNegativeButton("Kanselahin", null)
+                .setPositiveButton("I-save", (dialog, which) -> {
+                    String name = nameInput.getText().toString().trim();
+                    if (name.isEmpty() || name.length() > 40) {
+                        toast("Ilagay ang pangalan na 1–40 character.");
+                        return;
+                    }
+                    playlist.name = name;
+                    persistPlaylists();
+                    showPlaylist(playlist);
+                })
+                .show();
+    }
+
+    private ArrayList<Integer> playlistTrackIndexes(Playlist playlist) {
+        ArrayList<Integer> indexes = new ArrayList<>();
+        ArrayList<Track> library = allTracks();
+        for (String id : playlist.tracks) {
+            for (int i = 0; i < library.size(); i++) {
+                if (id.equals(library.get(i).id)) {
+                    indexes.add(i);
+                    break;
+                }
+            }
+        }
+        return indexes;
+    }
+
+    private void showNowPlaying() {
+        fullPlayerOpen = true;
+        ArrayList<Track> library = allTracks();
+        Track track = currentTrack >= 0 && currentTrack < library.size()
+                ? library.get(currentTrack) : null;
+        LinearLayout root = page();
+        root.setPadding(0, dp(12), 0, 0);
+
+        LinearLayout toolbar = row();
+        toolbar.setGravity(Gravity.CENTER_VERTICAL);
+        TextView minimize = text("⌄", 30, Color.WHITE, true);
+        minimize.setGravity(Gravity.CENTER);
+        toolbar.addView(minimize, new LinearLayout.LayoutParams(dp(54), dp(48)));
+        minimize.setContentDescription("I-minimize ang player");
+        minimize.setOnClickListener(v -> minimizeNowPlaying());
+        LinearLayout heading = new LinearLayout(this);
+        heading.setOrientation(LinearLayout.VERTICAL);
+        heading.setGravity(Gravity.CENTER);
+        heading.addView(text("NOW PLAYING", 11, MUTED, true));
+        Playlist queue = findPlaylist(playbackPlaylistId);
+        heading.addView(text(queue == null ? "Spatibai" : queue.name, 12, Color.WHITE, true));
+        toolbar.addView(heading, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView more = text("⋮", 22, Color.WHITE, true);
+        more.setGravity(Gravity.CENTER);
+        toolbar.addView(more, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        more.setOnClickListener(v -> {
+            if (track != null) addTrackToPlaylistDialog(track);
+        });
+        root.addView(toolbar, matchWrap());
+
+        ScrollView scroll = new ScrollView(this);
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(28), dp(18), dp(28), dp(24));
+        scroll.addView(content);
+        root.addView(scroll, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        TextView artwork = text("♫", 80, Color.WHITE, true);
+        artwork.setGravity(Gravity.CENTER);
+        artwork.setBackground(gradient(Color.rgb(38, 91, 56), Color.rgb(17, 39, 27), 18));
+        LinearLayout.LayoutParams artworkParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(280));
+        artworkParams.bottomMargin = dp(24);
+        content.addView(artwork, artworkParams);
+
+        TextView title = text(track == null ? "Walang pinapatugtog" : track.title,
+                24, Color.WHITE, true);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        content.addView(title, matchWrap());
+        LinearLayout songRow = row();
+        songRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView artist = text(track == null ? "Pumili ng kanta mula sa library" : track.artist,
+                15, MUTED, false);
+        artist.setSingleLine(true);
+        artist.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        songRow.addView(artist, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        TextView add = text("+", 24, GREEN, true);
+        add.setGravity(Gravity.CENTER);
+        add.setContentDescription("Idagdag ang kanta sa playlist");
+        songRow.addView(add, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        add.setEnabled(track != null);
+        add.setOnClickListener(v -> {
+            if (track != null) addTrackToPlaylistDialog(track);
+        });
+        content.addView(songRow, matchWrap());
+
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(1000);
+        seekBar.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN));
+        seekBar.setThumbTintList(android.content.res.ColorStateList.valueOf(GREEN));
+        seekBar.setProgressBackgroundTintList(
+                android.content.res.ColorStateList.valueOf(Color.rgb(76, 91, 81)));
+        seekBar.setEnabled(track != null && playerPrepared);
+        seekBar.setProgress(currentProgress());
+        fullSeekBar = seekBar;
+        LinearLayout.LayoutParams fullSeekParams = matchWrap();
+        fullSeekParams.topMargin = dp(10);
+        content.addView(seekBar, fullSeekParams);
+        LinearLayout timeRow = row();
+        TextView elapsed = text("0:00", 11, MUTED, false);
+        TextView duration = text("0:00", 11, MUTED, false);
+        fullElapsedTime = elapsed;
+        fullDurationTime = duration;
+        timeRow.addView(elapsed, new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        duration.setGravity(Gravity.RIGHT);
+        timeRow.addView(duration);
+        content.addView(timeRow, matchWrap());
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                if (!fromUser || !playerPrepared || mediaPlayer == null) return;
+                try {
+                    elapsed.setText(formatTime(mediaPlayer.getDuration() * value / 1000));
+                } catch (IllegalStateException ignored) {
+                    // The player may be transitioning between playback states.
+                }
+            }
+
+            @Override public void onStartTrackingTouch(SeekBar bar) {
+                isSeeking = true;
+            }
+
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                MediaPlayer player = mediaPlayer;
+                if (player != null && playerPrepared) {
+                    try {
+                        player.seekTo((int) (player.getDuration() * (long) bar.getProgress() / 1000));
+                    } catch (IllegalStateException ignored) {
+                        // The player may be transitioning between playback states.
+                    }
+                }
+                isSeeking = false;
+                updateMiniProgress();
+            }
+        });
+        if (playerPrepared && mediaPlayer != null) {
+            try {
+                elapsed.setText(formatTime(mediaPlayer.getCurrentPosition()));
+                duration.setText(formatTime(mediaPlayer.getDuration()));
+                seekBar.setProgress((int) (mediaPlayer.getCurrentPosition() * 1000L /
+                        Math.max(1, mediaPlayer.getDuration())));
+            } catch (IllegalStateException ignored) {
+                // The player may be transitioning between playback states.
+            }
+        }
+
+        LinearLayout controls = row();
+        controls.setGravity(Gravity.CENTER);
+        TextView previous = text("⏮", 24, Color.WHITE, true);
+        previous.setGravity(Gravity.CENTER);
+        controls.addView(previous, new LinearLayout.LayoutParams(0, dp(64), 1));
+        previous.setOnClickListener(v -> navigatePlayback(-1));
+        TextView play = text(isPlaying ? "Ⅱ" : "▶", 32, Color.WHITE, true);
+        play.setGravity(Gravity.CENTER);
+        controls.addView(play, new LinearLayout.LayoutParams(0, dp(64), 1));
+        play.setOnClickListener(v -> togglePlayback());
+        TextView next = text("⏭", 24, Color.WHITE, true);
+        next.setGravity(Gravity.CENTER);
+        controls.addView(next, new LinearLayout.LayoutParams(0, dp(64), 1));
+        next.setOnClickListener(v -> navigatePlayback(1));
+        TextView repeat = text("", 22, MUTED, true);
+        repeat.setGravity(Gravity.CENTER);
+        fullRepeatButton = repeat;
+        updateRepeatButton();
+        controls.addView(repeat, new LinearLayout.LayoutParams(0, dp(64), 1));
+        repeat.setOnClickListener(v -> {
+            repeatMode = (repeatMode + 1) % 3;
+            preferences.edit().putInt("repeat_mode", repeatMode).apply();
+            updateRepeatButton();
+        });
+        content.addView(controls, matchWrap());
+
+        LinearLayout lyricsCard = new LinearLayout(this);
+        lyricsCard.setOrientation(LinearLayout.VERTICAL);
+        lyricsCard.setPadding(dp(18), dp(18), dp(18), dp(18));
+        lyricsCard.setBackground(round(SURFACE, 16));
+        lyricsCard.addView(text("Lyrics", 20, Color.WHITE, true), matchWrap());
+        boolean hasLyrics = track != null && !track.lyrics.trim().isEmpty();
+        TextView lyrics = text(hasLyrics ? track.lyrics :
+                "Wala pang lyrics na inilagay para sa kantang ito. Maaaring idagdag ng admin ang lyrics sa song details.",
+                16, hasLyrics ? Color.WHITE : MUTED, false);
+        lyrics.setLineSpacing(dp(5), 1f);
+        lyrics.setTextIsSelectable(true);
+        LinearLayout.LayoutParams lyricsParams = matchWrap();
+        lyricsParams.topMargin = dp(12);
+        lyricsCard.addView(lyrics, lyricsParams);
+        LinearLayout.LayoutParams lyricsCardParams = matchWrap();
+        lyricsCardParams.topMargin = dp(26);
+        content.addView(lyricsCard, lyricsCardParams);
+
+        addBottomNav(root);
+        setContentView(root);
+        updateMiniProgress();
+    }
+
+    private void minimizeNowPlaying() {
+        fullPlayerOpen = false;
+        fullSeekBar = null;
+        fullElapsedTime = null;
+        fullDurationTime = null;
+        fullRepeatButton = null;
+        refreshCurrentScreen();
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (fullPlayerOpen) {
+            minimizeNowPlaying();
+            return;
+        }
+        super.onBackPressed();
     }
 
     private void addMiniPlayer(LinearLayout root) {
@@ -826,6 +1321,8 @@ public class MainActivity extends AppCompatActivity {
         player.setOrientation(LinearLayout.VERTICAL);
         player.setPadding(dp(12), dp(5), dp(14), dp(5));
         player.setBackground(round(Color.rgb(38, 53, 44), 14));
+        player.setClickable(true);
+        player.setOnClickListener(v -> showNowPlaying());
         LinearLayout controls = row();
         controls.setGravity(Gravity.CENTER_VERTICAL);
         TextView cover = text("♫", 20, Color.WHITE, true);
@@ -848,9 +1345,7 @@ public class MainActivity extends AppCompatActivity {
         TextView previous = text("⏮", 18, Color.WHITE, true);
         previous.setGravity(Gravity.CENTER);
         controls.addView(previous, new LinearLayout.LayoutParams(dp(38), dp(42)));
-        previous.setOnClickListener(v -> {
-            if (!library.isEmpty()) playTrack((currentTrack - 1 + library.size()) % library.size());
-        });
+        previous.setOnClickListener(v -> navigatePlayback(-1));
         TextView play = text(isPlaying ? "Ⅱ" : "▶", 20, Color.WHITE, true);
         play.setGravity(Gravity.CENTER);
         controls.addView(play, new LinearLayout.LayoutParams(dp(42), dp(42)));
@@ -858,53 +1353,143 @@ public class MainActivity extends AppCompatActivity {
         TextView next = text("⏭", 18, Color.WHITE, true);
         next.setGravity(Gravity.CENTER);
         controls.addView(next, new LinearLayout.LayoutParams(dp(38), dp(42)));
-        next.setOnClickListener(v -> {
-            if (!library.isEmpty()) playTrack((Math.max(currentTrack, -1) + 1) % library.size());
+        next.setOnClickListener(v -> navigatePlayback(1));
+        TextView repeat = text("", 19, MUTED, true);
+        repeat.setGravity(Gravity.CENTER);
+        miniRepeatButton = repeat;
+        updateRepeatButton();
+        controls.addView(repeat, new LinearLayout.LayoutParams(dp(36), dp(42)));
+        repeat.setOnClickListener(v -> {
+            repeatMode = (repeatMode + 1) % 3;
+            preferences.edit().putInt("repeat_mode", repeatMode).apply();
+            updateRepeatButton();
         });
 
         player.addView(controls, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(42)));
-        ProgressBar progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        progress.setMax(1000);
-        progress.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN));
-        progress.setProgressBackgroundTintList(
+        LinearLayout seekRow = row();
+        seekRow.setGravity(Gravity.CENTER_VERTICAL);
+        miniElapsedTime = text("0:00", 10, MUTED, false);
+        miniElapsedTime.setGravity(Gravity.CENTER_VERTICAL);
+        seekRow.addView(miniElapsedTime, new LinearLayout.LayoutParams(dp(32), dp(20)));
+        SeekBar seekBar = new SeekBar(this);
+        seekBar.setMax(1000);
+        seekBar.setProgressTintList(android.content.res.ColorStateList.valueOf(GREEN));
+        seekBar.setThumbTintList(android.content.res.ColorStateList.valueOf(GREEN));
+        seekBar.setProgressBackgroundTintList(
                 android.content.res.ColorStateList.valueOf(Color.rgb(76, 91, 81)));
-        progress.setProgress(0);
-        progress.setVisibility(currentTrack >= 0 ? View.VISIBLE : View.INVISIBLE);
-        miniProgressBar = progress;
+        seekBar.setProgress(0);
+        seekBar.setEnabled(currentTrack >= 0 && playerPrepared);
+        miniSeekBar = seekBar;
+        seekRow.addView(seekBar, new LinearLayout.LayoutParams(0, dp(22), 1));
+        miniDurationTime = text("0:00", 10, MUTED, false);
+        miniDurationTime.setGravity(Gravity.CENTER_VERTICAL | Gravity.RIGHT);
+        seekRow.addView(miniDurationTime, new LinearLayout.LayoutParams(dp(32), dp(20)));
+        seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                if (fromUser && playerPrepared && mediaPlayer != null) {
+                    try {
+                        miniElapsedTime.setText(formatTime(
+                                mediaPlayer.getDuration() * value / 1000));
+                    } catch (IllegalStateException ignored) {
+                        // The player may be transitioning between playback states.
+                    }
+                }
+            }
+
+            @Override public void onStartTrackingTouch(SeekBar bar) {
+                isSeeking = true;
+            }
+
+            @Override public void onStopTrackingTouch(SeekBar bar) {
+                MediaPlayer player = mediaPlayer;
+                if (player != null && playerPrepared) {
+                    try {
+                        player.seekTo((int) (player.getDuration() * (long) bar.getProgress() / 1000));
+                    } catch (IllegalStateException ignored) {
+                        // The player may be transitioning between playback states.
+                    }
+                }
+                isSeeking = false;
+                updateMiniProgress();
+            }
+        });
         updateMiniProgress();
-        LinearLayout.LayoutParams progressParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(3));
-        progressParams.topMargin = dp(3);
-        player.addView(progress, progressParams);
+        LinearLayout.LayoutParams seekParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(22));
+        seekParams.topMargin = dp(1);
+        player.addView(seekRow, seekParams);
         if (mediaPlayer != null && isPlaying) {
             mainHandler.removeCallbacks(miniProgressRunnable);
             mainHandler.post(miniProgressRunnable);
         }
 
         LinearLayout.LayoutParams playerParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(62));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(74));
         playerParams.setMargins(dp(14), dp(8), dp(14), dp(4));
         root.addView(player, playerParams);
     }
 
     private void updateMiniProgress() {
         MediaPlayer player = mediaPlayer;
-        ProgressBar progress = miniProgressBar;
-        if (player == null || progress == null || !playerPrepared) return;
+        SeekBar seekBar = miniSeekBar;
+        if (player == null || !playerPrepared || isSeeking) return;
         try {
             int duration = player.getDuration();
             if (duration > 0) {
-                progress.setProgress((int) (player.getCurrentPosition() * 1000L / duration));
+                int progress = (int) (player.getCurrentPosition() * 1000L / duration);
+                if (seekBar != null) seekBar.setProgress(progress);
+                if (fullSeekBar != null) fullSeekBar.setProgress(progress);
+                if (miniElapsedTime != null) {
+                    miniElapsedTime.setText(formatTime(player.getCurrentPosition()));
+                }
+                if (miniDurationTime != null) miniDurationTime.setText(formatTime(duration));
+                if (fullElapsedTime != null) {
+                    fullElapsedTime.setText(formatTime(player.getCurrentPosition()));
+                }
+                if (fullDurationTime != null) fullDurationTime.setText(formatTime(duration));
             }
         } catch (IllegalStateException ignored) {
             // The player may still be preparing after the screen is refreshed.
         }
     }
 
+    private int currentProgress() {
+        MediaPlayer player = mediaPlayer;
+        if (player == null || !playerPrepared) return 0;
+        try {
+            int duration = player.getDuration();
+            return duration <= 0 ? 0 : (int) (player.getCurrentPosition() * 1000L / duration);
+        } catch (IllegalStateException ignored) {
+            return 0;
+        }
+    }
+
+    private void updateRepeatButton() {
+        TextView button = miniRepeatButton;
+        String description = repeatMode == 0 ? "Repeat off" :
+                repeatMode == 1 ? "Repeat all" : "Repeat one";
+        for (TextView repeat : new TextView[]{button, fullRepeatButton}) {
+            if (repeat == null) continue;
+            repeat.setText(repeatMode == 2 ? "↻¹" : "↻");
+            repeat.setTextColor(repeatMode == 0 ? MUTED : GREEN);
+            repeat.setContentDescription(description);
+        }
+    }
+
+    private String formatTime(int milliseconds) {
+        int totalSeconds = Math.max(0, milliseconds / 1000);
+        return String.format(Locale.ROOT, "%d:%02d", totalSeconds / 60, totalSeconds % 60);
+    }
+
     private void playTrack(int index) {
+        playTrack(index, false);
+    }
+
+    private void playTrack(int index, boolean keepPlaylistQueue) {
         ArrayList<Track> library = allTracks();
         if (index < 0 || index >= library.size()) return;
+        if (!keepPlaylistQueue) playbackPlaylistId = null;
         releasePlayer();
         currentTrack = index;
         isPlaying = false;
@@ -938,7 +1523,14 @@ public class MainActivity extends AppCompatActivity {
             nextPlayer.setOnCompletionListener(completedPlayer -> {
                 ArrayList<Track> currentLibrary = allTracks();
                 if (mediaPlayer == completedPlayer && !currentLibrary.isEmpty()) {
-                    playTrack((currentTrack + 1) % currentLibrary.size());
+                    if (repeatMode == 2) {
+                        completedPlayer.seekTo(0);
+                        completedPlayer.start();
+                        isPlaying = true;
+                        updateMiniProgress();
+                    } else {
+                        advancePlayback(false);
+                    }
                 }
             });
             nextPlayer.setOnErrorListener((failedPlayer, what, extra) -> {
@@ -961,10 +1553,75 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void playPlaylist(Playlist playlist, String startTrackId) {
+        ArrayList<Integer> indexes = playlistTrackIndexes(playlist);
+        if (indexes.isEmpty()) {
+            toast("Wala pang kantang available sa playlist na ito.");
+            return;
+        }
+        int selected = indexes.get(0);
+        if (startTrackId != null) {
+            ArrayList<Track> library = allTracks();
+            for (int index : indexes) {
+                if (startTrackId.equals(library.get(index).id)) {
+                    selected = index;
+                    break;
+                }
+            }
+        }
+        playbackPlaylistId = playlist.id;
+        playTrack(selected, true);
+    }
+
+    private void navigatePlayback(int direction) {
+        ArrayList<Integer> indexes = new ArrayList<>();
+        Playlist playlist = findPlaylist(playbackPlaylistId);
+        if (playlist != null) indexes = playlistTrackIndexes(playlist);
+        else {
+            ArrayList<Track> library = allTracks();
+            for (int i = 0; i < library.size(); i++) indexes.add(i);
+        }
+        if (indexes.isEmpty()) return;
+        int position = indexes.indexOf(currentTrack);
+        if (position < 0) position = direction > 0 ? -1 : 0;
+        int nextPosition = (position + direction + indexes.size()) % indexes.size();
+        playTrack(indexes.get(nextPosition), playlist != null);
+    }
+
+    private void advancePlayback(boolean manual) {
+        ArrayList<Integer> indexes = new ArrayList<>();
+        Playlist playlist = findPlaylist(playbackPlaylistId);
+        if (playlist != null) indexes = playlistTrackIndexes(playlist);
+        else {
+            ArrayList<Track> library = allTracks();
+            for (int i = 0; i < library.size(); i++) indexes.add(i);
+        }
+        if (indexes.isEmpty()) {
+            isPlaying = false;
+            refreshCurrentScreen();
+            return;
+        }
+        int position = indexes.indexOf(currentTrack);
+        if (position < 0) position = 0;
+        if (position + 1 < indexes.size()) {
+            playTrack(indexes.get(position + 1), playlist != null);
+        } else if (manual) {
+            playTrack(indexes.get(0), playlist != null);
+        } else if (repeatMode == 1) {
+            playTrack(indexes.get(0), playlist != null);
+        } else {
+            isPlaying = false;
+            refreshCurrentScreen();
+        }
+    }
+
     private void togglePlayback() {
         if (mediaPlayer == null || currentTrack < 0) {
-            if (allTracks().isEmpty()) openAudioPicker();
-            else playTrack(0);
+            if (allTracks().isEmpty()) {
+                toast("Wala pang kantang in-upload ang admin.");
+            } else {
+                playTrack(0);
+            }
             return;
         }
         if (mediaPlayer.isPlaying()) {
@@ -983,15 +1640,28 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void refreshCurrentScreen() {
-        if ("Library".equals(activeTab)) showLibrary();
+        if (fullPlayerOpen) {
+            showNowPlaying();
+            return;
+        }
+        if ("Library".equals(activeTab)) {
+            Playlist active = findPlaylist(activePlaylistId);
+            if (active == null) showLibrary();
+            else showPlaylist(active);
+        }
         else showHome();
     }
 
     private ArrayList<Track> allTracks() {
-        ArrayList<Track> library = new ArrayList<>(onlineTracks.size() + tracks.size());
-        library.addAll(onlineTracks);
-        library.addAll(tracks);
-        return library;
+        return new ArrayList<>(onlineTracks);
+    }
+
+    private Playlist findPlaylist(String id) {
+        if (id == null) return null;
+        for (Playlist playlist : playlists) {
+            if (id.equals(playlist.id)) return playlist;
+        }
+        return null;
     }
 
     private String serverBaseUrl() {
@@ -1037,7 +1707,10 @@ public class MainActivity extends AppCompatActivity {
                                         baseUrl + "/api.php?route=media&id=" + id,
                                         item.getString("title"),
                                         item.optString("artist", "Spatibai"), true,
-                                        offlineFile(id).getAbsolutePath()));
+                                        offlineFile(id).getAbsolutePath(),
+                                        item.optString("lyrics", ""),
+                                        item.optString("source", ""),
+                                        item.optString("providerTrackId", "")));
                             }
                         }
                         acceptCatalog(fetched);
@@ -1075,11 +1748,17 @@ public class MainActivity extends AppCompatActivity {
         }
         String cookie = CookieManager.getInstance().getCookie(serverBaseUrl());
         int missing = 0;
-        for (Track track : onlineTracks) if (!track.isCached()) missing++;
+        int providerTracks = 0;
+        for (Track track : onlineTracks) {
+            if (track.isAudius()) providerTracks++;
+            else if (!track.isCached()) missing++;
+        }
         onlineStatus = onlineTracks.isEmpty()
                 ? "Wala pang kanta sa server"
-                : onlineTracks.size() + " kanta · " +
-                (missing == 0 ? "Naka-save offline" : "Dina-download para sa offline");
+                : onlineTracks.size() + " kanta · " + (missing > 0
+                ? "Dina-download para sa offline"
+                : providerTracks > 0 ? providerTracks + " Audius · online streaming"
+                : "Naka-save offline");
         syncInProgress = false;
         if (changed || !fetched.isEmpty()) refreshCurrentScreen();
         if (missing > 0) downloadMissingTracks(new ArrayList<>(onlineTracks), cookie);
@@ -1103,6 +1782,7 @@ public class MainActivity extends AppCompatActivity {
             int downloaded = 0;
             String failedTitle = null;
             for (Track track : catalog) {
+                if (track.isAudius()) continue;
                 if (track.isCached()) continue;
                 mainHandler.post(() -> {
                     onlineStatus = "Sine-save offline: " + track.title;
@@ -1119,9 +1799,13 @@ public class MainActivity extends AppCompatActivity {
             final String failed = failedTitle;
             mainHandler.post(() -> {
                 persistOnlineTracks();
-                onlineStatus = failed == null
-                        ? onlineTracks.size() + " kanta · Naka-save offline"
-                        : "Hindi na-download: " + failed + " · I-tap para subukan ulit";
+                int providerCount = 0;
+                for (Track track : onlineTracks) if (track.isAudius()) providerCount++;
+                onlineStatus = failed != null
+                        ? "Hindi na-download: " + failed + " · I-tap para subukan ulit"
+                        : providerCount > 0 ? onlineTracks.size() + " kanta · " +
+                        providerCount + " Audius online"
+                        : onlineTracks.size() + " kanta · Naka-save offline";
                 refreshCurrentScreen();
                 if (failed != null) toast("Hindi na-save offline ang " + failed + ". I-tap para subukan ulit.");
                 else if (savedCount > 0) toast(savedCount + " kanta ang na-save para sa offline.");
@@ -1189,7 +1873,9 @@ public class MainActivity extends AppCompatActivity {
         for (int i = 0; i < first.size(); i++) {
             Track a = first.get(i);
             Track b = second.get(i);
-            if (!a.id.equals(b.id) || !a.title.equals(b.title) || !a.artist.equals(b.artist)) {
+            if (!a.id.equals(b.id) || !a.title.equals(b.title) || !a.artist.equals(b.artist) ||
+                    !a.lyrics.equals(b.lyrics) || !a.source.equals(b.source) ||
+                    !a.providerTrackId.equals(b.providerTrackId)) {
                 return false;
             }
         }
@@ -1263,86 +1949,6 @@ public class MainActivity extends AppCompatActivity {
         setContentView(root);
     }
 
-    private void openAudioPicker() {
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-        intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("audio/*");
-        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
-        audioPicker.launch(intent);
-    }
-
-    private void importSelectedAudio(Intent result) {
-        ArrayList<Uri> selected = new ArrayList<>();
-        if (result.getClipData() != null) {
-            for (int i = 0; i < result.getClipData().getItemCount(); i++) {
-                selected.add(result.getClipData().getItemAt(i).getUri());
-            }
-        } else if (result.getData() != null) {
-            selected.add(result.getData());
-        }
-
-        int added = 0;
-        for (Uri uri : selected) {
-            try {
-                getContentResolver().takePersistableUriPermission(
-                        uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
-            } catch (SecurityException exception) {
-                toast("Hindi ma-save ang access sa napiling audio file.");
-                continue;
-            }
-            String title = queryDisplayName(uri);
-            if (title == null || title.trim().isEmpty()) title = "Audio track";
-            int extension = title.lastIndexOf('.');
-            if (extension > 0) title = title.substring(0, extension);
-
-            boolean exists = false;
-            for (Track track : tracks) {
-                if (track.uri.equals(uri.toString())) {
-                    exists = true;
-                    break;
-                }
-            }
-            if (!exists) {
-                tracks.add(new Track(uri.toString(), title, "Offline audio"));
-                added++;
-            }
-        }
-        persistTracks();
-        toast(added == 0 ? "Nasa library na ang napili mong kanta." :
-                added + " audio file ang idinagdag.");
-        if ("Library".equals(activeTab)) showLibrary();
-        else showHome();
-    }
-
-    private String queryDisplayName(Uri uri) {
-        try (android.database.Cursor cursor = getContentResolver().query(
-                uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
-                if (column >= 0) return cursor.getString(column);
-            }
-        } catch (RuntimeException exception) {
-            toast("Hindi mabasa ang pangalan ng audio file.");
-        }
-        return null;
-    }
-
-    private void persistTracks() {
-        JSONArray array = new JSONArray();
-        for (Track track : tracks) {
-            JSONObject item = new JSONObject();
-            try {
-                item.put("uri", track.uri);
-                item.put("title", track.title);
-                item.put("artist", track.artist);
-                array.put(item);
-            } catch (JSONException exception) {
-                throw new IllegalStateException("Hindi ma-save ang kanta sa library.", exception);
-            }
-        }
-        preferences.edit().putString("offline_tracks", array.toString()).apply();
-    }
-
     private void persistOnlineTracks() {
         JSONArray array = new JSONArray();
         for (Track track : onlineTracks) {
@@ -1352,6 +1958,9 @@ public class MainActivity extends AppCompatActivity {
                 item.put("uri", track.uri);
                 item.put("title", track.title);
                 item.put("artist", track.artist);
+                item.put("lyrics", track.lyrics);
+                item.put("source", track.source);
+                item.put("providerTrackId", track.providerTrackId);
                 array.put(item);
             } catch (JSONException exception) {
                 throw new IllegalStateException("Hindi ma-save ang online music library.", exception);
@@ -1360,19 +1969,55 @@ public class MainActivity extends AppCompatActivity {
         preferences.edit().putString("online_tracks", array.toString()).apply();
     }
 
-    private void restoreTracks() {
-        String stored = preferences.getString("offline_tracks", "[]");
+    private String playlistStorageKey() {
+        String email = preferences.getString("email", "").trim().toLowerCase(Locale.ROOT);
+        return "playlists_" + (email.isEmpty() ? "guest" : email);
+    }
+
+    private void persistPlaylists() {
+        JSONArray array = new JSONArray();
+        for (Playlist playlist : playlists) {
+            JSONObject item = new JSONObject();
+            JSONArray trackIds = new JSONArray();
+            try {
+                item.put("id", playlist.id);
+                item.put("name", playlist.name);
+                for (String trackId : playlist.tracks) trackIds.put(trackId);
+                item.put("tracks", trackIds);
+                array.put(item);
+            } catch (JSONException exception) {
+                throw new IllegalStateException("Hindi ma-save ang mga playlist.", exception);
+            }
+        }
+        preferences.edit().putString(playlistStorageKey(), array.toString()).apply();
+    }
+
+    private void restorePlaylists() {
+        playlists.clear();
+        String stored = preferences.getString(playlistStorageKey(), "[]");
         try {
             JSONArray array = new JSONArray(stored);
             for (int i = 0; i < array.length(); i++) {
                 JSONObject item = array.getJSONObject(i);
-                tracks.add(new Track(item.getString("uri"),
-                        item.getString("title"), item.getString("artist")));
+                String id = item.getString("id");
+                String name = item.getString("name").trim();
+                if (id.isEmpty() || name.isEmpty() || name.length() > 40) continue;
+                ArrayList<String> trackIds = new ArrayList<>();
+                JSONArray tracks = item.optJSONArray("tracks");
+                if (tracks != null) {
+                    for (int j = 0; j < tracks.length(); j++) {
+                        String trackId = tracks.optString(j, "");
+                        if (!trackId.isEmpty() && !trackIds.contains(trackId)) trackIds.add(trackId);
+                    }
+                }
+                playlists.add(new Playlist(id, name, trackIds));
             }
         } catch (JSONException exception) {
-            preferences.edit().remove("offline_tracks").apply();
-            toast("Hindi mabasa ang dating library. Puwede kang mag-import ulit.");
+            android.util.Log.e("Spatibai", "Could not read saved playlists.", exception);
+            preferences.edit().remove(playlistStorageKey()).apply();
         }
+        if (findPlaylist(activePlaylistId) == null) activePlaylistId = null;
+        if (findPlaylist(playbackPlaylistId) == null) playbackPlaylistId = null;
     }
 
     private void restoreOnlineTracks() {
@@ -1392,13 +2037,18 @@ public class MainActivity extends AppCompatActivity {
                 }
                 onlineTracks.add(new Track(id, uri,
                         item.getString("title"), item.optString("artist", "Spatibai"), true,
-                        offlineFile(id).getAbsolutePath()));
+                        offlineFile(id).getAbsolutePath(), item.optString("lyrics", ""),
+                        item.optString("source", ""), item.optString("providerTrackId", "")));
             }
             if (changed) persistOnlineTracks();
             if (!onlineTracks.isEmpty()) {
                 int cached = 0;
-                for (Track track : onlineTracks) if (track.isCached()) cached++;
-                onlineStatus = cached + " kanta ang naka-save para sa offline";
+                int providerCount = 0;
+                for (Track track : onlineTracks) {
+                    if (track.isAudius()) providerCount++;
+                    else if (track.isCached()) cached++;
+                }
+                onlineStatus = cached + " offline · " + providerCount + " Audius online";
             }
         } catch (JSONException exception) {
             preferences.edit().remove("online_tracks").apply();
@@ -1430,7 +2080,8 @@ public class MainActivity extends AppCompatActivity {
 
     private void releasePlayer() {
         mainHandler.removeCallbacks(miniProgressRunnable);
-        if (miniProgressBar != null) miniProgressBar.setProgress(0);
+        if (miniSeekBar != null) miniSeekBar.setProgress(0);
+        isSeeking = false;
         if (mediaPlayer != null) {
             MediaPlayer oldPlayer = mediaPlayer;
             mediaPlayer = null;
@@ -1466,22 +2117,38 @@ public class MainActivity extends AppCompatActivity {
         final String artist;
         final boolean online;
         final String cachePath;
+        final String lyrics;
+        final String source;
+        final String providerTrackId;
 
         Track(String uri, String title, String artist) {
-            this(uri, uri, title, artist, false, null);
+            this(uri, uri, title, artist, false, null, "", "", "");
         }
 
         Track(String id, String uri, String title, String artist, boolean online) {
-            this(id, uri, title, artist, online, null);
+            this(id, uri, title, artist, online, null, "", "", "");
         }
 
         Track(String id, String uri, String title, String artist, boolean online, String cachePath) {
+            this(id, uri, title, artist, online, cachePath, "", "", "");
+        }
+
+        Track(String id, String uri, String title, String artist, boolean online,
+              String cachePath, String lyrics) {
+            this(id, uri, title, artist, online, cachePath, lyrics, "", "");
+        }
+
+        Track(String id, String uri, String title, String artist, boolean online,
+              String cachePath, String lyrics, String source, String providerTrackId) {
             this.id = id;
             this.uri = uri;
             this.title = title;
             this.artist = artist;
             this.online = online;
             this.cachePath = cachePath;
+            this.lyrics = lyrics == null ? "" : lyrics;
+            this.source = source == null ? "" : source;
+            this.providerTrackId = providerTrackId == null ? "" : providerTrackId;
         }
 
         File cachedFile() {
@@ -1489,8 +2156,25 @@ public class MainActivity extends AppCompatActivity {
         }
 
         boolean isCached() {
+            if (isAudius()) return false;
             File file = cachedFile();
             return file != null && file.isFile() && file.length() > 0;
+        }
+
+        boolean isAudius() {
+            return "audius".equals(source);
+        }
+    }
+
+    private static class Playlist {
+        final String id;
+        String name;
+        final ArrayList<String> tracks;
+
+        Playlist(String id, String name, ArrayList<String> tracks) {
+            this.id = id;
+            this.name = name;
+            this.tracks = tracks;
         }
     }
 

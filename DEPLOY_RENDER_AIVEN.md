@@ -35,6 +35,7 @@ The Node.js server supports the Android app's registration, six-digit email veri
    | `R2_ACCESS_KEY_ID` | Access key ID from the R2 API token |
    | `R2_SECRET_ACCESS_KEY` | Secret access key from the R2 API token |
    | `R2_BUCKET_NAME` | Exact name of the private R2 bucket |
+   | `AUDIUS_API_KEY` | Optional free Audius API key for provider search/stream requests |
 
 5. Paste the CA certificate directly into the Render environment value field. Never send secrets in chat or commit them.
 6. Deploy and wait for the service to become `Live`. Render's health check can use `/healthz`.
@@ -45,13 +46,19 @@ Audio files are stored under `audio/` in the private R2 bucket, and the admin ca
 
 Cloudflare R2 has a free monthly allowance for standard storage and operations. Usage over the free allowance can be billed; check the current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) and set a Cloudflare billing alert/limit before uploading a large music collection. The admin page checks that the bucket is reachable and disables uploads if storage is not available. Keep a separate backup of important tracks; object storage is not itself a backup.
 
-## 4. Point the Android app at Render
+## 4. Add streamable tracks from Audius
+
+The admin page can search Audius and add eligible tracks to the Spatibai catalog without copying the audio file. Imported tracks stream from Audius and require an internet connection; the Android app does not cache them offline. This is a community-uploaded catalog, not the complete Spotify catalog. Check the creator's rights and each track's license before adding or distributing it.
+
+Audius offers a free API plan with published rate limits. Create a free key at <https://api.audius.co/plans> and set it as `AUDIUS_API_KEY` in Render (optional for public search today, recommended for the app's own API identity). The server uses the key only for Audius API calls. See the [Audius developer docs](https://docs.audius.co/sdk) and current terms before production use. Admin imports are catalog metadata only; they still require R2 on Render so the catalog persists.
+
+## 5. Point the Android app at Render
 
 After deployment, copy the public HTTPS URL from the Render service, for example `https://spatibai-api.onrender.com`. In the app, open **Settings** using the gear icon, set the music server URL to that exact URL (no trailing slash), and save it. The current APK's default URL is still the old InfinityFree URL; update this setting or replace `DEFAULT_SERVER_URL` in `app/src/main/java/com/example/spatibai/MainActivity.java` with your actual Render URL and rebuild the APK.
 
 Check `https://YOUR-RENDER-HOST/healthz` returns `{"ok":true}` and `https://YOUR-RENDER-HOST/api.php?route=tracks` returns JSON such as `{"tracks":[]}`. The app must receive JSON rather than an HTML challenge page.
 
-## 5. Configure Gmail verification relay
+## 6. Configure Gmail verification relay
 
 1. Sign in to the Google account that should send verification mail, then open <https://script.google.com> and create a project.
 2. Copy `hosting/render-gmail-relay.gs` into the project's `Code.gs`.
