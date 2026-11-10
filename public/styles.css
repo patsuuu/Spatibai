@@ -456,6 +456,9 @@ audio { display: none; }
 .landing-nav { display: flex; align-items: center; gap: 32px; margin-left: auto; margin-right: 22px; }
 .landing-nav a, .landing-footer a { color: #a7b2aa; font-size: 13px; transition: color .16s ease; }
 .landing-nav a:hover, .landing-footer a:hover { color: var(--green); }
+.landing-nav .admin-login-link { min-height: 42px; padding: 0 14px 0 8px; display: inline-flex; align-items: center; gap: 9px; border: 1px solid #2b382f; border-radius: 24px; background: #141b16; color: #d3ddd5; font-size: 12px; font-weight: 600; }
+.landing-nav .admin-login-link:hover { border-color: rgba(30,215,96,.4); background: rgba(30,215,96,.08); color: #b7f4c8; }
+.admin-login-avatar { width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid rgba(30,215,96,.28); border-radius: 50%; background: #203328; color: #b7f4c8; font-size: 11px; font-weight: 800; }
 .landing-header-cta { min-height: 41px; padding: 0 15px; display: inline-flex; align-items: center; gap: 12px; border: 1px solid rgba(30,215,96,.28); border-radius: 22px; background: rgba(30,215,96,.1); color: #b7f4c8; font-size: 12px; font-weight: 700; }
 .landing-header-cta:hover { background: rgba(30,215,96,.18); }
 .landing-header-cta span { font-size: 17px; }
@@ -524,17 +527,15 @@ audio { display: none; }
   .landing-header { height: 67px; gap: 10px; }
   .landing-header .brand { gap: 7px; font-size: 18px; }
   .landing-header .brand-mark { width: 31px; height: 31px; font-size: 21px; }
-  .landing-nav { gap: 13px; margin: 0 0 0 auto; }
-  .landing-nav a { font-size: 11px; }
-  .landing-header-cta { min-height: 35px; padding: 0 10px; gap: 6px; font-size: 10px; }
-  .landing-header-cta span { font-size: 14px; }
+  .landing-nav { gap: 0; margin: 0 0 0 auto; }
+  .landing-nav .admin-login-link { min-height: 36px; padding: 0 10px 0 6px; gap: 6px; font-size: 10px; }
+  .admin-login-avatar { width: 24px; height: 24px; }
   .landing-hero { padding: 47px 3% 30px; grid-template-columns: minmax(0, 1fr); gap: 0; }
   .landing-copy h1 { font-size: clamp(43px, 12vw, 60px); letter-spacing: -2.8px; }
   .landing-lead { max-width: 420px; font-size: 13px; }
   .landing-actions { margin-top: 23px; gap: 6px; }
   .download-button { min-height: 56px; padding-right: 13px; }
   .download-icon { width: 36px; height: 36px; }
-  .library-button { padding: 0 8px; font-size: 11px; }
   .download-note { max-width: 300px; margin-top: 11px; }
   .landing-art { min-height: 260px; margin-top: 8px; }
   .art-disc { width: 220px; }

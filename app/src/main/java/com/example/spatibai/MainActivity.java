@@ -43,6 +43,7 @@ import org.json.JSONObject;
 import java.nio.charset.StandardCharsets;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.HttpURLConnection;
@@ -58,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int SURFACE = Color.rgb(27, 35, 31);
     private static final int MUTED = Color.rgb(164, 177, 168);
     private static final int GREEN = Color.rgb(29, 215, 96);
-    private static final String DEFAULT_SERVER_URL = "https://spatibai.site.je";
+    private static final String DEFAULT_SERVER_URL = "https://spatibai.onrender.com";
     private SharedPreferences preferences;
     private final ArrayList<Track> tracks = new ArrayList<>();
     private final ArrayList<Track> onlineTracks = new ArrayList<>();
@@ -66,12 +67,14 @@ public class MainActivity extends AppCompatActivity {
     private ProgressBar miniProgressBar;
     private int currentTrack = -1;
     private boolean isPlaying = false;
+    private boolean playerPrepared = false;
     private boolean offlineOnly = false;
     private String activeTab = "Home";
     private String homeSearchQuery = "";
     private ActivityResultLauncher<Intent> audioPicker;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService authExecutor = Executors.newSingleThreadExecutor();
     private final Runnable miniProgressRunnable = new Runnable() {
         @Override public void run() {
             MediaPlayer player = mediaPlayer;
@@ -86,13 +89,6 @@ public class MainActivity extends AppCompatActivity {
     private boolean syncInProgress;
     private WebView webView;
     private int webViewChecks;
-    private int serverBootstrapChecks;
-    private boolean serverBootstrapReady;
-    private boolean serverBootstrapInProgress;
-    private final ArrayList<Runnable> pendingServerRequests = new ArrayList<>();
-    private final ArrayList<AuthCallback> pendingServerFailures = new ArrayList<>();
-    private final Runnable serverBootstrapTimeout = () -> finishServerBootstrap(false);
-    private final Runnable serverBootstrapCheck = this::inspectServerBootstrap;
     private final Runnable syncRunnable = new Runnable() {
         @Override public void run() {
             if (preferences != null && preferences.getBoolean("logged_in", false)) {
@@ -210,7 +206,6 @@ public class MainActivity extends AppCompatActivity {
 
         EditText finalNameInput = nameInput;
         Button submit = button(register ? "Gumawa ng account" : "Mag-log in", true);
-        if (register && !serverBootstrapReady) submit.setEnabled(false);
         LinearLayout.LayoutParams submitParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(54));
         submitParams.topMargin = dp(12);
@@ -298,24 +293,8 @@ public class MainActivity extends AppCompatActivity {
         authScroll.setVerticalScrollBarEnabled(false);
         authScroll.addView(page);
         setContentView(authScroll);
-        if (register && !serverBootstrapReady) {
-            TextView statusView = serverStatus;
-            prepareServerForAuth(
-                    () -> {
-                        statusView.setText("Handa na ang API. Maaari ka nang mag-register.");
-                        statusView.setTextColor(GREEN);
-                        submit.setEnabled(true);
-                    },
-                    (response, error) -> {
-                        statusView.setText(error == null
-                                ? "Hindi ma-verify ang koneksyon sa API."
-                                : error);
-                        statusView.setTextColor(MUTED);
-                        submit.setEnabled(true);
-                    });
-        } else if (register) {
-            serverStatus.setText("Handa na ang API. Maaari ka nang mag-register.");
-            serverStatus.setTextColor(GREEN);
+        if (register) {
+            checkServerApi(serverStatus);
         }
     }
 
@@ -399,142 +378,118 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void requestAuth(String route, JSONObject body, String token, AuthCallback callback) {
-        mainHandler.post(() -> prepareServerForAuth(
-                () -> performAuthRequest(route, body, token, callback), callback));
-    }
-
-    private void performAuthRequest(String route, JSONObject body, String token,
-                                    AuthCallback callback) {
-        String baseUrl = serverBaseUrl();
-        Uri baseUri = Uri.parse(baseUrl);
-        String scheme = baseUri.getScheme();
-        String host = baseUri.getHost();
-        if (host == null ||
-                (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
-            callback.onResult(new JSONObject(), "I-check ang server address sa settings.");
-            return;
-        }
-        boolean localServer = "localhost".equalsIgnoreCase(host) ||
-                "127.0.0.1".equals(host) || "10.0.2.2".equals(host);
-        if (!"https".equalsIgnoreCase(scheme) && !localServer) {
-            callback.onResult(new JSONObject(),
-                    "HTTPS ang kailangan para ligtas maipadala ang password.");
-            return;
-        }
-        if (webView == null) {
-            callback.onResult(new JSONObject(), "Hindi handa ang koneksyon sa server. Subukan ulit.");
-            return;
-        }
-
-        boolean getRequest = "auth-session".equals(route) && body == null;
-        String url = JSONObject.quote(baseUrl + "/api.php?route=" + route);
-        String requestBody = JSONObject.quote(body == null ? "{}" : body.toString());
-        StringBuilder headers = new StringBuilder("{'Accept':'application/json'");
-        if (!getRequest) headers.append(",'Content-Type':'application/json; charset=UTF-8'");
-        if (token != null && !token.isEmpty()) {
-            headers.append(",'Authorization':").append(JSONObject.quote("Bearer " + token));
-        }
-        headers.append('}');
-        String script = "(function(){return fetch(" + url + ",{method:" +
-                JSONObject.quote(getRequest ? "GET" : "POST") +
-                ",credentials:'include',cache:'no-store',headers:" + headers +
-                (getRequest ? "" : ",body:" + requestBody) +
-                "}).then(async function(r){return {status:r.status,body:await r.text()};})" +
-                ".catch(function(e){return {networkError:String(e)};});})()";
-        webView.evaluateJavascript(script, result -> {
+        authExecutor.execute(() -> {
+            JSONObject response = new JSONObject();
+            String error = null;
             try {
-                JSONObject fetchResult = new JSONObject(result);
-                if (fetchResult.has("networkError")) {
-                    callback.onResult(new JSONObject(),
-                            "Hindi makakonekta sa server. Tingnan ang internet at server URL.");
-                    return;
+                ApiResponse apiResponse = sendApiRequest(route, body, token);
+                response = apiResponse.body;
+                if (apiResponse.status < 200 || apiResponse.status >= 300) {
+                    error = response.optString("error", "Hindi naisagawa ang request. Subukan ulit.");
                 }
-                int status = fetchResult.optInt("status", 0);
-                String responseBody = fetchResult.optString("body", "");
-                JSONObject response;
-                try {
-                    response = new JSONObject(responseBody);
-                } catch (JSONException invalidJson) {
-                    callback.onResult(new JSONObject(),
-                            "Hindi tinanggap ng hosting ang API request. Kailangang payagan ng hosting ang API requests mula sa app.");
-                    return;
-                }
-                String error = status < 200 || status >= 300
-                        ? response.optString("error", "Hindi naisagawa ang request. Subukan ulit.")
-                        : null;
-                callback.onResult(response, error);
-            } catch (JSONException | NullPointerException exception) {
-                callback.onResult(new JSONObject(),
-                        "Hindi mabasa ang tugon ng server. Subukan ulit mamaya.");
+            } catch (IOException | JSONException exception) {
+                android.util.Log.w("Spatibai", "Auth API request failed.", exception);
+                error = exception instanceof JSONException
+                        ? "Hindi JSON ang tugon ng server. Tingnan ang Render API configuration."
+                        : "Hindi maabot ang Render API. Tingnan ang internet connection at Render service.";
             }
+            JSONObject result = response;
+            String resultError = error;
+            mainHandler.post(() -> callback.onResult(result, resultError));
         });
     }
 
-    private void prepareServerForAuth(Runnable request, AuthCallback callback) {
-        if (serverBootstrapReady) {
-            request.run();
-            return;
-        }
-        pendingServerRequests.add(request);
-        pendingServerFailures.add(callback);
-        if (serverBootstrapInProgress) return;
+    private static final class ApiResponse {
+        final int status;
+        final JSONObject body;
 
-        serverBootstrapInProgress = true;
-        serverBootstrapChecks = 0;
-        ensureWebView();
-        mainHandler.removeCallbacks(serverBootstrapTimeout);
-        mainHandler.postDelayed(serverBootstrapTimeout, 30_000);
-        webView.loadUrl(serverBaseUrl() + "/api.php?route=tracks");
+        ApiResponse(int status, JSONObject body) {
+            this.status = status;
+            this.body = body;
+        }
     }
 
-    private void finishServerBootstrap(boolean success) {
-        if (!serverBootstrapInProgress) return;
-        serverBootstrapInProgress = false;
-        serverBootstrapReady = success;
-        mainHandler.removeCallbacks(serverBootstrapTimeout);
-        if (!success) {
-            pendingServerRequests.clear();
-            ArrayList<AuthCallback> failures = new ArrayList<>(pendingServerFailures);
-            pendingServerFailures.clear();
-            for (AuthCallback callback : failures) {
-                callback.onResult(new JSONObject(),
-                        "Hindi maabot ng app ang API. Dapat JSON ang sagot ng /api.php?route=tracks, hindi HTML challenge. Ayusin ang API hosting bago mag-register.");
-            }
-            return;
-        }
-        ArrayList<Runnable> requests = new ArrayList<>(pendingServerRequests);
-        pendingServerRequests.clear();
-        pendingServerFailures.clear();
-        for (Runnable request : requests) request.run();
-    }
-
-    private void inspectServerBootstrap() {
-        if (!serverBootstrapInProgress || webView == null) return;
-        serverBootstrapChecks++;
-        String tracksUrl = JSONObject.quote(serverBaseUrl() + "/api.php?route=tracks");
-        String script = "(function(){return fetch(" + tracksUrl +
-                ",{credentials:'include',cache:'no-store'," +
-                "headers:{'Accept':'application/json'}})" +
-                ".then(async function(r){var t=await r.text();try{" +
-                "var j=JSON.parse(t);return {ok:r.ok&&Array.isArray(j.tracks)};" +
-                "}catch(e){return {ok:false};}})" +
-                ".catch(function(){return {ok:false};});})()";
-        webView.evaluateJavascript(script, result -> {
-            if (!serverBootstrapInProgress) return;
-            try {
-                if (new JSONObject(result).optBoolean("ok")) {
-                    finishServerBootstrap(true);
-                    return;
+    private ApiResponse sendApiRequest(String route, JSONObject body, String token)
+            throws IOException, JSONException {
+        boolean getRequest = body == null &&
+                ("tracks".equals(route) || "auth-session".equals(route));
+        String endpoint = serverBaseUrl() + "/api.php?route=" +
+                java.net.URLEncoder.encode(route, StandardCharsets.UTF_8);
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection.setRequestMethod(getRequest ? "GET" : "POST");
+            connection.setConnectTimeout(30_000);
+            connection.setReadTimeout(60_000);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("Accept", "application/json");
+            if (!getRequest) {
+                connection.setDoOutput(true);
+                connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+                byte[] requestBody = (body == null ? new JSONObject() : body)
+                        .toString().getBytes(StandardCharsets.UTF_8);
+                try (java.io.OutputStream output = connection.getOutputStream()) {
+                    output.write(requestBody);
                 }
+            }
+            if (token != null && !token.isEmpty()) {
+                connection.setRequestProperty("Authorization", "Bearer " + token);
+            }
+            int status = connection.getResponseCode();
+            InputStream responseStream = status >= 400
+                    ? connection.getErrorStream() : connection.getInputStream();
+            if (responseStream == null) throw new IOException("Empty API response.");
+            String responseBody;
+            try (InputStream input = responseStream;
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[4096];
+                int total = 0;
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    total += count;
+                    if (total > 65_536) throw new IOException("API response is too large.");
+                    output.write(buffer, 0, count);
+                }
+                responseBody = output.toString(StandardCharsets.UTF_8.name());
+            }
+            try {
+                return new ApiResponse(status, new JSONObject(responseBody));
             } catch (JSONException exception) {
-                android.util.Log.w("Spatibai", "Could not read the hosting API preflight response.",
-                        exception);
+                throw new IOException("The server returned a non-JSON API response.", exception);
             }
-            if (serverBootstrapChecks >= 20) {
-                finishServerBootstrap(false);
-            } else {
-                mainHandler.postDelayed(serverBootstrapCheck, 1000);
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private void checkServerApi(TextView statusView) {
+        authExecutor.execute(() -> {
+            String statusText;
+            int statusColor;
+            try {
+                ApiResponse response = sendApiRequest("tracks", null, null);
+                if (response.status >= 200 && response.status < 300 &&
+                        response.body.optJSONArray("tracks") != null) {
+                    statusText = "Handa na ang Render API. Maaari ka nang mag-register.";
+                    statusColor = GREEN;
+                } else {
+                    statusText = "Hindi makuha ang music API. Suriin ang Render Logs.";
+                    statusColor = MUTED;
+                }
+            } catch (IOException | JSONException exception) {
+                android.util.Log.w("Spatibai", "Render API readiness check failed.", exception);
+                statusText = exception.getMessage() != null &&
+                        exception.getMessage().contains("non-JSON")
+                        ? "HTML ang sagot ng server, hindi JSON. Suriin ang Render URL/configuration."
+                        : "Hindi maabot ang Render API. Suriin ang internet at Render service.";
+                statusColor = MUTED;
             }
+            String message = statusText;
+            int color = statusColor;
+            mainHandler.post(() -> {
+                statusView.setText(message);
+                statusView.setTextColor(color);
+            });
         });
     }
 
@@ -550,10 +505,6 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public void onPageFinished(WebView view, String url) {
-                if (serverBootstrapInProgress) {
-                    mainHandler.removeCallbacks(serverBootstrapCheck);
-                    mainHandler.postDelayed(serverBootstrapCheck, 1500);
-                }
                 if (syncInProgress) {
                     mainHandler.postDelayed(() -> inspectCatalogPage(view), 1500);
                 }
@@ -563,7 +514,6 @@ public class MainActivity extends AppCompatActivity {
             public void onReceivedError(WebView view, WebResourceRequest request,
                                         android.webkit.WebResourceError error) {
                 if (request.isForMainFrame()) {
-                    if (serverBootstrapInProgress) finishServerBootstrap(false);
                     if (syncInProgress) {
                         failOnlineSync("Hindi mabuksan ang music server. Tingnan ang internet o server URL.");
                     }
@@ -941,7 +891,7 @@ public class MainActivity extends AppCompatActivity {
     private void updateMiniProgress() {
         MediaPlayer player = mediaPlayer;
         ProgressBar progress = miniProgressBar;
-        if (player == null || progress == null) return;
+        if (player == null || progress == null || !playerPrepared) return;
         try {
             int duration = player.getDuration();
             if (duration > 0) {
@@ -958,6 +908,7 @@ public class MainActivity extends AppCompatActivity {
         releasePlayer();
         currentTrack = index;
         isPlaying = false;
+        playerPrepared = false;
         Track track = library.get(index);
         MediaPlayer nextPlayer = new MediaPlayer();
         mediaPlayer = nextPlayer;
@@ -977,6 +928,7 @@ public class MainActivity extends AppCompatActivity {
             }
             nextPlayer.setOnPreparedListener(preparedPlayer -> {
                 if (mediaPlayer != preparedPlayer) return;
+                playerPrepared = true;
                 preparedPlayer.start();
                 isPlaying = true;
                 mainHandler.removeCallbacks(miniProgressRunnable);
@@ -991,6 +943,8 @@ public class MainActivity extends AppCompatActivity {
             });
             nextPlayer.setOnErrorListener((failedPlayer, what, extra) -> {
                 if (mediaPlayer == failedPlayer) {
+                    android.util.Log.e("Spatibai", "Audio playback failed: what=" +
+                            what + ", extra=" + extra);
                     releasePlayer();
                     toast("Hindi ma-play ang file na ito. Subukan ang ibang audio file.");
                     refreshCurrentScreen();
@@ -1041,9 +995,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String serverBaseUrl() {
-        String baseUrl = preferences.getString("music_server_url", DEFAULT_SERVER_URL).trim();
-        while (baseUrl.endsWith("/")) baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-        return baseUrl;
+        return DEFAULT_SERVER_URL;
     }
 
     private void refreshOnlineTracks(boolean showMessage) {
@@ -1111,7 +1063,7 @@ public class MainActivity extends AppCompatActivity {
         }
         boolean changed = !sameOnlineTracks(onlineTracks, fetched);
         for (Track oldTrack : onlineTracks) {
-            if (!containsTrack(fetched, oldTrack.id) && oldTrack.isCached()) fetched.add(oldTrack);
+            if (!containsTrack(fetched, oldTrack.id)) deleteCachedAudio(oldTrack);
         }
         onlineTracks.clear();
         onlineTracks.addAll(fetched);
@@ -1259,7 +1211,7 @@ public class MainActivity extends AppCompatActivity {
         TextView title = text("Settings", 28, Color.WHITE, true);
         title.setPadding(dp(20), 0, dp(20), 0);
         root.addView(title);
-        TextView subtitle = text("Pamahalaan ang koneksyon sa music site.", 14, MUTED, false);
+        TextView subtitle = text("Kumonekta at mag-sync sa music site.", 14, MUTED, false);
         subtitle.setPadding(dp(20), dp(4), dp(20), 0);
         root.addView(subtitle);
 
@@ -1277,12 +1229,6 @@ public class MainActivity extends AppCompatActivity {
         sectionParams.bottomMargin = dp(10);
         content.addView(section, sectionParams);
 
-        EditText urlInput = input("http://10.0.2.2:3000", false);
-        urlInput.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        urlInput.setText(serverBaseUrl());
-        content.addView(urlInput, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(54)));
-
         LinearLayout infoCard = new LinearLayout(this);
         infoCard.setOrientation(LinearLayout.VERTICAL);
         infoCard.setPadding(dp(16), dp(16), dp(16), dp(16));
@@ -1291,30 +1237,22 @@ public class MainActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         infoCardParams.topMargin = dp(14);
         content.addView(infoCard, infoCardParams);
-        infoCard.addView(text("Server address", 14, Color.WHITE, true));
-        TextView help = text("InfinityFree: https://spatibai.site.je\n" +
-                "Ilagay ang HTTPS address ng music website. Awtomatikong ida-download ng app ang mga bagong kanta para mapatugtog din offline.",
+        infoCard.addView(text("Server URL", 14, Color.WHITE, true));
+        TextView maskedUrl = text("••••••••••••••••••••", 16, MUTED, true);
+        maskedUrl.setSingleLine(true);
+        infoCard.addView(maskedUrl);
+        TextView help = text("Nakatago ang server address sa settings. Patuloy pa ring gumagana ang online sync at pag-download ng kanta para sa offline playback.",
                 13, MUTED, false);
         LinearLayout.LayoutParams helpParams = wrap();
         helpParams.topMargin = dp(8);
         infoCard.addView(help, helpParams);
 
-        Button save = button("I-save at i-sync", true);
+        Button save = button("Bumalik at mag-sync", true);
         LinearLayout.LayoutParams saveParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(52));
         saveParams.topMargin = dp(18);
         content.addView(save, saveParams);
         save.setOnClickListener(v -> {
-            String value = urlInput.getText().toString().trim();
-            Uri uri = Uri.parse(value);
-            String scheme = uri.getScheme();
-            if (uri.getHost() == null ||
-                    (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme))) {
-                toast("Ilagay ang kumpletong server address na nagsisimula sa http:// o https://.");
-                return;
-            }
-            while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
-            preferences.edit().putString("music_server_url", value).apply();
             activeTab = "Home";
             showHome();
             refreshOnlineTracks(true);
@@ -1441,14 +1379,22 @@ public class MainActivity extends AppCompatActivity {
         String stored = preferences.getString("online_tracks", "[]");
         try {
             JSONArray array = new JSONArray(stored);
+            boolean changed = false;
             for (int i = 0; i < array.length(); i++) {
                 JSONObject item = array.getJSONObject(i);
                 String id = item.getString("id");
                 if (!id.matches("[0-9a-fA-F-]{36}")) continue;
-                onlineTracks.add(new Track(id, item.getString("uri"),
+                String uri = item.getString("uri");
+                if (!isFromCurrentServer(uri)) {
+                    deleteCachedAudio(offlineFile(id));
+                    changed = true;
+                    continue;
+                }
+                onlineTracks.add(new Track(id, uri,
                         item.getString("title"), item.optString("artist", "Spatibai"), true,
                         offlineFile(id).getAbsolutePath()));
             }
+            if (changed) persistOnlineTracks();
             if (!onlineTracks.isEmpty()) {
                 int cached = 0;
                 for (Track track : onlineTracks) if (track.isCached()) cached++;
@@ -1457,6 +1403,24 @@ public class MainActivity extends AppCompatActivity {
         } catch (JSONException exception) {
             preferences.edit().remove("online_tracks").apply();
             onlineStatus = "Hindi mabasa ang dating music library.";
+        }
+    }
+
+    private boolean isFromCurrentServer(String trackUri) {
+        Uri track = Uri.parse(trackUri);
+        Uri server = Uri.parse(serverBaseUrl());
+        return track.getScheme() != null && track.getScheme().equalsIgnoreCase(server.getScheme()) &&
+                track.getHost() != null && track.getHost().equalsIgnoreCase(server.getHost()) &&
+                track.getPort() == server.getPort();
+    }
+
+    private void deleteCachedAudio(Track track) {
+        deleteCachedAudio(track.cachedFile());
+    }
+
+    private void deleteCachedAudio(File file) {
+        if (file != null && file.exists() && !file.delete()) {
+            android.util.Log.w("Spatibai", "Could not delete stale offline audio: " + file.getName());
         }
     }
 
@@ -1471,6 +1435,7 @@ public class MainActivity extends AppCompatActivity {
             MediaPlayer oldPlayer = mediaPlayer;
             mediaPlayer = null;
             isPlaying = false;
+            playerPrepared = false;
             oldPlayer.setOnPreparedListener(null);
             oldPlayer.setOnCompletionListener(null);
             oldPlayer.setOnErrorListener(null);
