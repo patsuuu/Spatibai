@@ -498,13 +498,11 @@ audio { display: none; }
 .library-button:hover { color: var(--green); }
 .library-button span { font-size: 17px; }
 .download-note { margin: 15px 0 0; color: #77847a; font-size: 10px; line-height: 1.6; }
-.landing-art { min-height: 390px; position: relative; display: grid; place-items: center; }
+.landing-art { min-height: 500px; position: relative; display: grid; place-items: center; }
 .art-glow { position: absolute; width: 330px; height: 330px; border-radius: 50%; background: rgba(30,215,96,.12); filter: blur(80px); }
-.art-disc { width: clamp(245px, 30vw, 350px); aspect-ratio: 1; position: relative; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.12); border-radius: 50%; background: repeating-radial-gradient(circle, #15231a 0 8px, #1d3023 9px 11px); box-shadow: 0 20px 90px rgba(0,0,0,.35), inset 0 0 45px rgba(30,215,96,.06); transform: rotate(-15deg); }
-.art-disc::before, .art-disc::after { content: ""; position: absolute; inset: 12%; border: 1px solid rgba(255,255,255,.06); border-radius: 50%; }
-.art-disc::after { inset: 23%; }
-.art-disc-center { width: 94px; height: 94px; display: grid; place-items: center; }
-.art-disc-center img { width: 100%; height: 100%; object-fit: contain; transform: rotate(15deg); }
+.phone-mockup { width: clamp(165px, 20vw, 218px); aspect-ratio: 0.46; position: relative; padding: 8px; overflow: hidden; border: 1px solid rgba(255,255,255,.28); border-radius: 32px; background: linear-gradient(145deg, #303a33, #080b09 30%, #111713 75%, #37433a); box-shadow: 0 28px 75px rgba(0,0,0,.55), 0 0 46px rgba(30,215,96,.14), inset 0 0 0 2px rgba(255,255,255,.035); transform: rotate(-8deg); }
+.phone-mockup img { width: 100%; height: 100%; display: block; object-fit: cover; border-radius: 24px; }
+.phone-speaker { width: 24%; height: 10px; position: absolute; z-index: 1; top: 8px; left: 38%; border-radius: 0 0 9px 9px; background: #080b09; box-shadow: 0 1px 2px rgba(255,255,255,.12); }
 .floating-note { position: absolute; display: grid; place-items: center; border: 1px solid rgba(30,215,96,.18); border-radius: 18px; background: rgba(24,38,28,.8); color: #a7f2bd; box-shadow: 0 12px 34px rgba(0,0,0,.25); backdrop-filter: blur(8px); }
 .note-one { width: 51px; height: 51px; top: 15%; right: 12%; font-size: 26px; transform: rotate(9deg); }
 .note-two { width: 43px; height: 43px; bottom: 17%; left: 10%; font-size: 21px; transform: rotate(-8deg); }
@@ -535,9 +533,8 @@ audio { display: none; }
   .landing-hero { min-height: 0; padding: 62px 2% 44px; grid-template-columns: minmax(0, 1.05fr) minmax(220px, .8fr); gap: 15px; }
   .landing-copy h1 { font-size: clamp(42px, 7vw, 60px); letter-spacing: -2.7px; }
   .landing-lead { font-size: 14px; }
-  .landing-art { min-height: 310px; }
-  .art-disc { width: clamp(210px, 32vw, 280px); }
-  .art-disc-center { width: 76px; height: 76px; }
+  .landing-art { min-height: 440px; }
+  .phone-mockup { width: clamp(165px, 23vw, 205px); }
   .landing-features { padding: 0 2%; }
 }
 
@@ -555,13 +552,14 @@ audio { display: none; }
   .download-button { min-height: 56px; padding-right: 13px; }
   .download-icon { width: 36px; height: 36px; }
   .download-note { max-width: 300px; margin-top: 11px; }
-  .landing-art { min-height: 260px; margin-top: 8px; }
-  .art-disc { width: 220px; }
-  .art-disc-center { width: 66px; height: 66px; }
-  .art-glow { width: 240px; height: 240px; }
-  .note-one { top: 12%; right: 17%; }
-  .note-two { bottom: 15%; left: 17%; }
-  .art-caption { right: 5%; bottom: 4%; font-size: 8px; }
+  .landing-art { min-height: 390px; margin-top: 8px; }
+  .phone-mockup { width: 164px; border-radius: 27px; padding: 7px; }
+  .phone-mockup img { border-radius: 20px; }
+  .phone-speaker { top: 7px; height: 8px; }
+  .art-glow { width: 240px; height: 320px; }
+  .note-one { top: 10%; right: 14%; }
+  .note-two { bottom: 13%; left: 13%; }
+  .art-caption { right: 1%; bottom: 2%; font-size: 8px; }
   .landing-features { padding: 0 2%; grid-template-columns: 1fr; gap: 10px; }
   .feature-card { min-height: 96px; padding: 16px; }
   .landing-bottom { margin: 32px 2% 0; gap: 9px; }
