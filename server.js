@@ -46,10 +46,13 @@ const ADMIN_PASSWORD = process.env.SPATIBAI_ADMIN_PASSWORD;
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
 const AUDIUS_API_BASE = "https://api.audius.co/v1";
 const AUDIUS_API_KEY = process.env.AUDIUS_API_KEY?.trim();
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY?.trim();
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const AUTH_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const sessions = new Map();
 const loginAttempts = new Map();
+const youtubeSearchAttempts = new Map();
+const youtubeSearchTimes = [];
 const scrypt = promisify(crypto.scrypt);
 const databaseConfig = {
   host: process.env.DB_HOST,
@@ -300,81 +303,76 @@ async function requestAudius(endpoint, params = {}) {
   return body.data;
 }
 
-async function searchAudiusTracks(req, res, query) {
-  if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
+async function searchYouTubeVideos(req, res, query) {
+  const user = await requireAuthenticatedUser(req);
   const search = String(query || "").trim();
   if (search.length < 2 || search.length > 100) {
     return sendJson(res, 400, { error: "Maglagay ng search term na 2–100 character." });
   }
-  const data = await requestAudius("tracks/search", { query: search, limit: 15 });
-  if (!Array.isArray(data)) throw httpError(502, "Hindi inaasahang sagot mula sa Audius.");
-  const tracks = data
-    .filter((track) => track.is_streamable === true &&
-      track.is_stream_gated !== true && track.access?.stream === true)
-    .map((track) => {
-      const permalink = typeof track.permalink === "string" &&
-        /^\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(track.permalink)
-        ? `https://audius.co${track.permalink}` : "";
-      return {
-        id: String(track.id || ""),
-        title: String(track.title || "").slice(0, 120),
-        artist: String(track.user?.name || "Audius artist").slice(0, 120),
-        duration: Number(track.duration) || 0,
-        permalink,
-        license: typeof track.license === "string" ? track.license : "",
-      };
-    })
-    .filter((track) => /^[a-zA-Z0-9_-]{1,64}$/.test(track.id) && track.title);
-  sendJson(res, 200, { tracks });
-}
-
-async function addAudiusTrack(req, res) {
-  if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
-  if (process.env.RENDER && !r2Client) {
+  if (!YOUTUBE_API_KEY) {
     return sendJson(res, 503, {
-      error: "Hindi maidaragdag ang track habang walang persistent catalog storage. I-configure muna ang Cloudflare R2.",
+      error: "Hindi pa naka-configure ang YouTube search. Itakda ang YOUTUBE_API_KEY sa server.",
     });
   }
-  const body = await readJson(req);
-  const providerTrackId = typeof body.id === "string" ? body.id.trim() : "";
-  if (!/^[a-zA-Z0-9_-]{1,64}$/.test(providerTrackId)) {
-    return sendJson(res, 400, { error: "Invalid Audius track ID." });
+  const now = Date.now();
+  const key = String(user.id);
+  const recent = (youtubeSearchAttempts.get(key) || []).filter((time) => now - time < 10 * 60 * 1000);
+  if (recent.length >= 15) {
+    youtubeSearchAttempts.set(key, recent);
+    return sendJson(res, 429, { error: "Marami nang YouTube search. Maghintay muna bago subukan ulit." });
   }
-  const existing = (await loadTracks()).find((track) =>
-    track.source === "audius" && track.providerTrackId === providerTrackId);
-  if (existing) return sendJson(res, 409, { error: "Nasa library na ang kantang ito." });
-  const track = await requestAudius(`tracks/${encodeURIComponent(providerTrackId)}`);
-  if (!track || String(track.id) !== providerTrackId) {
-    return sendJson(res, 404, { error: "Hindi mahanap ang Audius track." });
+  while (youtubeSearchTimes.length && now - youtubeSearchTimes[0] >= 24 * 60 * 60 * 1000) {
+    youtubeSearchTimes.shift();
   }
-  if (track.is_streamable !== true || track.is_stream_gated === true ||
-      track.access?.stream !== true) {
-    return sendJson(res, 403, { error: "Hindi puwedeng i-stream sa Spatibai ang track na ito." });
+  if (youtubeSearchTimes.length >= 80) {
+    return sendJson(res, 429, { error: "Naabot na ang shared YouTube search limit. Subukan ulit mamaya." });
   }
-  const imported = {
-    id: crypto.randomUUID(),
-    title: String(track.title || "").trim().slice(0, 120),
-    artist: String(track.user?.name || "Audius artist").trim().slice(0, 120),
-    lyrics: "",
-    source: "audius",
-    providerTrackId,
-    providerUrl: typeof track.permalink === "string" &&
-      /^\/[a-zA-Z0-9._-]+\/[a-zA-Z0-9._-]+$/.test(track.permalink)
-      ? `https://audius.co${track.permalink}` : "",
-    providerLicense: track.license ?? null,
-    duration: Number(track.duration) || 0,
-    uploadedAt: new Date().toISOString(),
-  };
-  if (!imported.title) return sendJson(res, 400, { error: "Walang pamagat ang track na ito." });
-  await updateTracks((tracks) => {
-    if (tracks.some((item) =>
-      item.source === "audius" && item.providerTrackId === providerTrackId)) {
-      throw httpError(409, "Nasa library na ang kantang ito.");
+  recent.push(now);
+  youtubeSearchAttempts.set(key, recent);
+  youtubeSearchTimes.push(now);
+  if (youtubeSearchAttempts.size > 2000) {
+    for (const [address, attempts] of youtubeSearchAttempts) {
+      if (!attempts.some((time) => now - time < 10 * 60 * 1000)) youtubeSearchAttempts.delete(address);
     }
-    tracks.unshift(imported);
-    return imported;
-  });
-  sendJson(res, 201, { track: imported });
+  }
+
+  const endpoint = new URL("https://www.googleapis.com/youtube/v3/search");
+  endpoint.search = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    videoEmbeddable: "true",
+    order: "date",
+    maxResults: "10",
+    q: search,
+    key: YOUTUBE_API_KEY,
+  }).toString();
+  let response;
+  try {
+    response = await fetch(endpoint, { signal: AbortSignal.timeout(15000) });
+  } catch (error) {
+    console.error("YouTube search request failed:", error);
+    throw httpError(502, "Hindi makakonekta sa YouTube. Subukan ulit mamaya.");
+  }
+  let body;
+  try {
+    body = await response.json();
+  } catch {
+    throw httpError(502, "Hindi mabasa ang sagot ng YouTube.");
+  }
+  if (!response.ok) {
+    console.error(`YouTube Data API returned HTTP ${response.status}:`, body.error?.status || "unknown");
+    if (response.status === 403) {
+      throw httpError(502, "Hindi pinayagan ng YouTube ang search. Suriin ang API key at quota sa Google Cloud.");
+    }
+    throw httpError(502, "Hindi sumagot nang maayos ang YouTube. Subukan ulit mamaya.");
+  }
+  if (!Array.isArray(body.items)) throw httpError(502, "Hindi inaasahang sagot mula sa YouTube.");
+  const videos = body.items.map((item) => ({
+    videoId: String(item.id?.videoId || ""),
+    title: String(item.snippet?.title || "").slice(0, 200),
+    channelTitle: String(item.snippet?.channelTitle || "").slice(0, 120),
+  })).filter((item) => /^[a-zA-Z0-9_-]{11}$/.test(item.videoId) && item.title);
+  sendJson(res, 200, { videos });
 }
 
 function requireDatabase() {
@@ -695,6 +693,22 @@ async function getAuthSession(req, res) {
   );
   if (!rows.length) throw httpError(401, "Expired o hindi valid ang session.");
   sendJson(res, 200, { user: rows[0] });
+}
+
+async function requireAuthenticatedUser(req) {
+  const pool = requireDatabase();
+  const authorization = req.headers.authorization || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+  if (!/^[a-f0-9]{64}$/.test(token)) throw httpError(401, "Mag-log in para maghanap sa YouTube.");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const [rows] = await pool.execute(
+    `SELECT u.id FROM user_sessions s
+     JOIN users u ON u.id = s.user_id
+     WHERE s.token_hash = ? AND s.expires_at > UTC_TIMESTAMP()`,
+    [tokenHash],
+  );
+  if (!rows.length) throw httpError(401, "Expired o hindi valid ang session.");
+  return rows[0];
 }
 
 async function logoutUser(req, res) {
@@ -1025,6 +1039,9 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && apiRoute === "auth-session") {
       return await getAuthSession(req, res);
     }
+    if (req.method === "GET" && apiRoute === "youtube-search") {
+      return await searchYouTubeVideos(req, res, url.searchParams.get("q"));
+    }
     if (req.method === "POST" && apiRoute === "auth-logout") {
       return await logoutUser(req, res);
     }
@@ -1044,11 +1061,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && pathname === "/api/admin/session") {
       return sendJson(res, 200, { authenticated: isAdmin(req) });
     }
-    if (req.method === "GET" && pathname === "/api/admin/audius/search") {
-      return await searchAudiusTracks(req, res, url.searchParams.get("q"));
-    }
-    if (req.method === "POST" && pathname === "/api/admin/audius/tracks") {
-      return await addAudiusTrack(req, res);
+    if (req.method === "GET" && pathname === "/api/youtube/search") {
+      return await searchYouTubeVideos(req, res, url.searchParams.get("q"));
     }
     if (req.method === "GET" && pathname === "/api/admin/storage") {
       if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });

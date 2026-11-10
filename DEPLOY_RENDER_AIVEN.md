@@ -35,7 +35,8 @@ The Node.js server supports the Android app's registration, six-digit email veri
    | `R2_ACCESS_KEY_ID` | Access key ID from the R2 API token |
    | `R2_SECRET_ACCESS_KEY` | Secret access key from the R2 API token |
    | `R2_BUCKET_NAME` | Exact name of the private R2 bucket |
-   | `AUDIUS_API_KEY` | Optional free Audius API key for provider search/stream requests |
+   | `YOUTUBE_API_KEY` | Server-only Google API key restricted to YouTube Data API v3 |
+   | `AUDIUS_API_KEY` | Optional Audius API key for previously imported Audius tracks |
 
 5. Paste the CA certificate directly into the Render environment value field. Never send secrets in chat or commit them.
 6. Deploy and wait for the service to become `Live`. Render's health check can use `/healthz`.
@@ -46,19 +47,28 @@ Audio files are stored under `audio/` in the private R2 bucket, and the admin ca
 
 Cloudflare R2 has a free monthly allowance for standard storage and operations. Usage over the free allowance can be billed; check the current [R2 pricing](https://developers.cloudflare.com/r2/pricing/) and set a Cloudflare billing alert/limit before uploading a large music collection. The admin page checks that the bucket is reachable and disables uploads if storage is not available. Keep a separate backup of important tracks; object storage is not itself a backup.
 
-## 4. Add streamable tracks from Audius
+## 4. Configure YouTube search in the Android app
 
-The admin page can search Audius and add eligible tracks to the Spatibai catalog without copying the audio file. Imported tracks stream from Audius and require an internet connection; the Android app does not cache them offline. This is a community-uploaded catalog, not the complete Spotify catalog. Check the creator's rights and each track's license before adding or distributing it.
+1. In Google Cloud Console, create or select a project and enable **YouTube Data API v3**.
+2. Create an API key, restrict it to **YouTube Data API v3**, and store it only in Render's environment as `YOUTUBE_API_KEY`. Never add the key to Android source, the APK, or Git.
+3. Check the project's YouTube Data API quota. Searches use the YouTube Data API search endpoint and can consume quota quickly; the server applies a per-account limit and a shared rolling 80-search-per-24-hours cap to protect the default project quota.
+4. Redeploy the Render service. Signed-in app users can search current videos. Results are not added to the Spatibai catalog or saved as a song cache; playback uses YouTube's official embedded player, with YouTube controls and branding. YouTube availability, embedding permissions, ads, and playback rules remain controlled by YouTube and each video owner.
 
-Audius offers a free API plan with published rate limits. Create a free key at <https://api.audius.co/plans> and set it as `AUDIUS_API_KEY` in Render (optional for public search today, recommended for the app's own API identity). The server uses the key only for Audius API calls. See the [Audius developer docs](https://docs.audius.co/sdk) and current terms before production use. Admin imports are catalog metadata only; they still require R2 on Render so the catalog persists.
+Admins use `/admin` only to upload audio they own or are licensed to distribute. YouTube search results cannot be imported as audio files or downloaded for offline use.
 
-## 5. Point the Android app at Render
+## 5. Existing Audius imports
+
+Previously imported Audius tracks remain in the catalog and stream from Audius with an internet connection; the Android app does not cache them offline. The admin interface no longer searches/imports Audius tracks. This is a community-uploaded catalog, not the complete Spotify catalog. Check each creator's rights and track license.
+
+If the catalog contains previously imported Audius tracks, the server may use `AUDIUS_API_KEY` for their stream requests. New Audius search/import is no longer available in the admin. See the [Audius developer docs](https://docs.audius.co/sdk) and current terms if you continue serving those legacy catalog entries.
+
+## 6. Point the Android app at Render
 
 After deployment, copy the public HTTPS URL from the Render service, for example `https://spatibai-api.onrender.com`. In the app, open **Settings** using the gear icon, set the music server URL to that exact URL (no trailing slash), and save it. The current APK's default URL is still the old InfinityFree URL; update this setting or replace `DEFAULT_SERVER_URL` in `app/src/main/java/com/example/spatibai/MainActivity.java` with your actual Render URL and rebuild the APK.
 
 Check `https://YOUR-RENDER-HOST/healthz` returns `{"ok":true}` and `https://YOUR-RENDER-HOST/api.php?route=tracks` returns JSON such as `{"tracks":[]}`. The app must receive JSON rather than an HTML challenge page.
 
-## 6. Configure Gmail verification relay
+## 7. Configure Gmail verification relay
 
 1. Sign in to the Google account that should send verification mail, then open <https://script.google.com> and create a project.
 2. Copy `hosting/render-gmail-relay.gs` into the project's `Code.gs`.

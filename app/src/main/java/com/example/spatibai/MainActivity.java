@@ -24,6 +24,7 @@ import android.widget.Toast;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
+import android.webkit.WebChromeClient;
 import android.webkit.WebViewClient;
 
 import androidx.appcompat.app.AlertDialog;
@@ -81,6 +82,7 @@ public class MainActivity extends AppCompatActivity {
     private String homeSearchQuery = "";
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService youtubeSearchExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService authExecutor = Executors.newSingleThreadExecutor();
     private final Runnable miniProgressRunnable = new Runnable() {
         @Override public void run() {
@@ -588,7 +590,14 @@ public class MainActivity extends AppCompatActivity {
         searchParams.bottomMargin = dp(24);
         content.addView(search, searchParams);
 
-        TextView quickTitle = text("Mga kanta mo", 20, Color.WHITE, true);
+        Button youtubeSearchButton = button("Hanapin sa YouTube", true);
+        youtubeSearchButton.setVisibility(offlineOnly ? View.GONE : View.VISIBLE);
+        LinearLayout.LayoutParams youtubeButtonParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(48));
+        youtubeButtonParams.bottomMargin = dp(20);
+        content.addView(youtubeSearchButton, youtubeButtonParams);
+
+        TextView quickTitle = text("Mga kanta sa library", 20, Color.WHITE, true);
         LinearLayout.LayoutParams sectionTitleParams = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
         sectionTitleParams.bottomMargin = dp(12);
@@ -597,6 +606,35 @@ public class MainActivity extends AppCompatActivity {
         trackList.setOrientation(LinearLayout.VERTICAL);
         content.addView(trackList, matchWrap());
         populateHomeTracks(trackList, homeSearchQuery);
+        TextView youtubeTitle = text("Mga resulta sa YouTube", 20, Color.WHITE, true);
+        youtubeTitle.setVisibility(offlineOnly ? View.GONE : View.VISIBLE);
+        LinearLayout.LayoutParams youtubeTitleParams = matchWrap();
+        youtubeTitleParams.topMargin = dp(24);
+        youtubeTitleParams.bottomMargin = dp(8);
+        content.addView(youtubeTitle, youtubeTitleParams);
+        TextView youtubeNote = text("Mga bagong resulta mula sa YouTube; online playback lang sa official player, hindi sine-save sa Spatibai library.", 12, MUTED, false);
+        youtubeNote.setVisibility(offlineOnly ? View.GONE : View.VISIBLE);
+        content.addView(youtubeNote, matchWrap());
+        TextView youtubeStatus = text("Maghanap para makita ang mga kasalukuyang video sa YouTube.", 13, MUTED, false);
+        youtubeStatus.setVisibility(offlineOnly ? View.GONE : View.VISIBLE);
+        content.addView(youtubeStatus, matchWrap());
+        LinearLayout youtubeResults = new LinearLayout(this);
+        youtubeResults.setOrientation(LinearLayout.VERTICAL);
+        youtubeResults.setVisibility(offlineOnly ? View.GONE : View.VISIBLE);
+        content.addView(youtubeResults, matchWrap());
+        youtubeSearchButton.setOnClickListener(v -> searchYouTubeVideos(
+                search.getText().toString().trim(), youtubeSearchButton, youtubeStatus, youtubeResults));
+        search.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                ((android.view.inputmethod.InputMethodManager)
+                        getSystemService(INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(
+                        search.getWindowToken(), 0);
+                searchYouTubeVideos(search.getText().toString().trim(),
+                        youtubeSearchButton, youtubeStatus, youtubeResults);
+                return true;
+            }
+            return false;
+        });
         search.addTextChangedListener(new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
@@ -821,7 +859,7 @@ public class MainActivity extends AppCompatActivity {
         if (matches == 0) {
             String message;
             if (!normalizedQuery.isEmpty()) {
-                message = "Walang kantang tumugma sa “" + query.trim() + "”. Subukan ang ibang salita.";
+                message = "Walang tugma sa Spatibai library. Puwede ring maghanap sa YouTube sa ibaba.";
             } else if (offlineOnly) {
                 message = "Wala pang kantang naka-save offline. Kumonekta sa internet at i-refresh ang library para ma-download ang mga kanta.";
             } else {
@@ -832,6 +870,150 @@ public class MainActivity extends AppCompatActivity {
             empty.setBackground(round(SURFACE, 12));
             trackList.addView(empty, matchWrap());
         }
+    }
+
+    private interface YouTubeSearchCallback {
+        void onResult(JSONArray videos, String error);
+    }
+
+    private void searchYouTubeVideos(String query, Button searchButton, TextView status,
+                                     LinearLayout results) {
+        if (query.length() < 2) {
+            status.setText("Maglagay ng kahit 2 character para maghanap.");
+            return;
+        }
+        searchButton.setEnabled(false);
+        status.setText("Naghahanap sa YouTube…");
+        results.removeAllViews();
+        requestYouTubeSearch(query, (videos, error) -> {
+            searchButton.setEnabled(true);
+            if (error != null) {
+                status.setText(error);
+                return;
+            }
+            if (videos.length() == 0) {
+                status.setText("Walang nahanap na video. Subukan ang ibang search.");
+                return;
+            }
+            status.setText("Mga kasalukuyang resulta mula sa YouTube. Pindutin ang video para mag-play.");
+            for (int i = 0; i < videos.length(); i++) {
+                JSONObject video = videos.optJSONObject(i);
+                if (video == null) continue;
+                String videoId = video.optString("videoId", "");
+                String title = video.optString("title", "");
+                String channel = video.optString("channelTitle", "YouTube channel");
+                if (!videoId.matches("[a-zA-Z0-9_-]{11}") || title.isEmpty()) continue;
+                LinearLayout item = row();
+                item.setGravity(Gravity.CENTER_VERTICAL);
+                item.setPadding(dp(12), dp(12), dp(12), dp(12));
+                item.setBackground(round(SURFACE, 12));
+                LinearLayout.LayoutParams itemParams = matchWrap();
+                itemParams.bottomMargin = dp(8);
+                item.setLayoutParams(itemParams);
+                TextView icon = text("▶", 18, GREEN, true);
+                icon.setGravity(Gravity.CENTER);
+                item.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+                LinearLayout details = new LinearLayout(this);
+                details.setOrientation(LinearLayout.VERTICAL);
+                details.addView(text(title, 14, Color.WHITE, true));
+                TextView channelLabel = text(channel, 12, MUTED, false);
+                channelLabel.setMaxLines(1);
+                channelLabel.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                details.addView(channelLabel);
+                LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(
+                        0, ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+                detailsParams.leftMargin = dp(10);
+                item.addView(details, detailsParams);
+                item.setClickable(true);
+                item.setFocusable(true);
+                item.setOnClickListener(v -> showYouTubePlayer(title, videoId));
+                results.addView(item);
+            }
+        });
+    }
+
+    private void requestYouTubeSearch(String query, YouTubeSearchCallback callback) {
+        youtubeSearchExecutor.execute(() -> {
+            JSONArray videos = new JSONArray();
+            String error = null;
+            HttpURLConnection connection = null;
+            try {
+                String endpoint = serverBaseUrl() + "/api.php?route=youtube-search&q=" +
+                        java.net.URLEncoder.encode(query, StandardCharsets.UTF_8.name());
+                connection = (HttpURLConnection) new URL(endpoint).openConnection();
+                connection.setConnectTimeout(15_000);
+                connection.setReadTimeout(20_000);
+                connection.setUseCaches(false);
+                connection.setRequestProperty("Accept", "application/json");
+                String token = preferences.getString("auth_token", "");
+                if (!token.isEmpty()) connection.setRequestProperty("Authorization", "Bearer " + token);
+                int statusCode = connection.getResponseCode();
+                InputStream stream = statusCode >= 400
+                        ? connection.getErrorStream() : connection.getInputStream();
+                if (stream == null) throw new IOException("Empty YouTube search response.");
+                String responseText;
+                try (InputStream input = stream;
+                     ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                    byte[] buffer = new byte[4096];
+                    int count;
+                    int total = 0;
+                    while ((count = input.read(buffer)) != -1) {
+                        total += count;
+                        if (total > 131_072) throw new IOException("YouTube search response is too large.");
+                        output.write(buffer, 0, count);
+                    }
+                    responseText = output.toString(StandardCharsets.UTF_8.name());
+                }
+                JSONObject response = new JSONObject(responseText);
+                if (statusCode < 200 || statusCode >= 300) {
+                    error = response.optString("error", "Hindi natuloy ang YouTube search.");
+                } else {
+                    videos = response.optJSONArray("videos");
+                    if (videos == null) throw new JSONException("Missing videos list.");
+                }
+            } catch (IOException | JSONException exception) {
+                android.util.Log.w("Spatibai", "YouTube search failed.", exception);
+                error = exception instanceof JSONException
+                        ? "Hindi mabasa ang sagot ng YouTube search."
+                        : "Hindi makakonekta sa YouTube search. Tingnan ang internet at subukan ulit.";
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            JSONArray result = videos;
+            String resultError = error;
+            mainHandler.post(() -> callback.onResult(result, resultError));
+        });
+    }
+
+    private void showYouTubePlayer(String title, String videoId) {
+        if (!videoId.matches("[a-zA-Z0-9_-]{11}")) return;
+        WebView player = new WebView(this);
+        player.setBackgroundColor(Color.BLACK);
+        player.getSettings().setJavaScriptEnabled(true);
+        player.getSettings().setDomStorageEnabled(true);
+        player.getSettings().setMediaPlaybackRequiresUserGesture(true);
+        player.setWebChromeClient(new WebChromeClient());
+        player.setWebViewClient(new WebViewClient());
+        String html = "<!doctype html><html><head><meta name=\"viewport\" " +
+                "content=\"width=device-width,initial-scale=1\"><style>" +
+                "html,body{height:100%;margin:0;background:#000}iframe{" +
+                "width:100%;height:100%;border:0}</style></head><body>" +
+                "<iframe src=\"https://www.youtube.com/embed/" + videoId +
+                "?playsinline=1\" title=\"YouTube video player\" " +
+                "allow=\"accelerometer; autoplay; clipboard-write; encrypted-media; " +
+                "gyroscope; picture-in-picture; web-share\" referrerpolicy=\"" +
+                "strict-origin-when-cross-origin\" allowfullscreen></iframe></body></html>";
+        player.loadDataWithBaseURL("https://www.youtube.com/", html, "text/html", "UTF-8", null);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setView(player, dp(16), dp(8), dp(16), dp(8))
+                .setPositiveButton("Isara", null)
+                .create();
+        dialog.setOnDismissListener(ignored -> {
+            player.stopLoading();
+            player.destroy();
+        });
+        dialog.show();
     }
 
     private View songRow(int index) {
@@ -2098,6 +2280,7 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         mainHandler.removeCallbacks(syncRunnable);
         networkExecutor.shutdownNow();
+        youtubeSearchExecutor.shutdownNow();
         releasePlayer();
         if (webView != null) {
             webView.stopLoading();
