@@ -60,6 +60,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import android.text.Editable;
+import android.text.TextWatcher;
 
 public class MainActivity extends AppCompatActivity {
     private static final String PREFS = "spatibai_account";
@@ -186,6 +188,145 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         mainHandler.removeCallbacks(syncRunnable);
         super.onPause();
+    }
+
+    private void populateRecentlyPlayed(LinearLayout trackList) {
+        trackList.removeAllViews();
+        ArrayList<Integer> recentIndexes = new ArrayList<>();
+        for (String trackId : recentlyPlayedTrackIds) {
+            int index = findTrackIndex(trackId);
+            if (index >= 0 && !recentIndexes.contains(index)) recentIndexes.add(index);
+        }
+        if (recentIndexes.isEmpty()) {
+            TextView empty = text("Wala pang kanta sa history. Tatanghaling dito ang mga huling pinatugtog mo.", 14, MUTED, false);
+            empty.setPadding(dp(16), dp(18), dp(16), dp(18));
+            empty.setBackground(round(SURFACE, 12));
+            trackList.addView(empty, matchWrap());
+            return;
+        }
+        for (int index : recentIndexes) {
+            trackList.addView(songRow(index));
+        }
+    }
+
+    private void addBottomNav(LinearLayout root) {
+        LinearLayout nav = row();
+        nav.setPadding(dp(12), dp(8), dp(12), dp(8));
+        nav.setBackgroundColor(Color.rgb(19, 27, 23));
+        nav.setGravity(Gravity.CENTER_VERTICAL);
+
+        String[] labels = {"Home", "Library", "Settings"};
+        for (String label : labels) {
+            boolean selected = label.equals(activeTab);
+            TextView tab = text(label, 13, selected ? GREEN : MUTED, true);
+            tab.setGravity(Gravity.CENTER);
+            tab.setPadding(dp(12), dp(10), dp(12), dp(10));
+            tab.setBackground(round(selected ? Color.rgb(30, 38, 34) : Color.TRANSPARENT, 18));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+            tab.setOnClickListener(v -> {
+                if ("Home".equals(label)) {
+                    activeTab = "Home";
+                    showHome();
+                } else if ("Library".equals(label)) {
+                    activeTab = "Library";
+                    showLibrary();
+                } else {
+                    activeTab = "Settings";
+                    showServerSettings();
+                }
+            });
+            nav.addView(tab, params);
+        }
+        root.addView(nav, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    private int playlistSectionIndex(LinearLayout content) {
+        for (int i = 0; i < content.getChildCount(); i++) {
+            View child = content.getChildAt(i);
+            if (child instanceof TextView) {
+                String value = ((TextView) child).getText() == null ? "" : ((TextView) child).getText().toString();
+                if ("Mga playlist".equals(value)) return i;
+            }
+        }
+        return 0;
+    }
+
+    private LinearLayout playlistRow(Playlist playlist) {
+        LinearLayout row = row();
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(16), dp(14), dp(16), dp(14));
+        row.setBackground(round(SURFACE, 14));
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClickable(true);
+        row.setOnClickListener(v -> showPlaylist(playlist));
+
+        LinearLayout info = new LinearLayout(this);
+        info.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams infoParams = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        info.addView(text(playlist.name, 16, Color.WHITE, true));
+        info.addView(text(playlist.tracks.size() + " na kanta", 12, MUTED, false));
+        row.addView(info, infoParams);
+
+        TextView arrow = text("›", 22, MUTED, true);
+        arrow.setGravity(Gravity.CENTER);
+        row.addView(arrow, new LinearLayout.LayoutParams(dp(28), dp(28)));
+        return row;
+    }
+
+    private LinearLayout songRow(int index) {
+        ArrayList<Track> library = allTracks();
+        if (index < 0 || index >= library.size()) {
+            return new LinearLayout(this);
+        }
+        Track track = library.get(index);
+        LinearLayout row = row();
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(dp(14), dp(12), dp(14), dp(12));
+        row.setBackground(round(SURFACE, 12));
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setClickable(true);
+        row.setOnClickListener(v -> playTrack(index));
+
+        TextView cover = text("♫", 18, GREEN, true);
+        cover.setGravity(Gravity.CENTER);
+        cover.setBackground(round(Color.rgb(44, 66, 52), 10));
+        cover.setPadding(dp(8), dp(8), dp(8), dp(8));
+        row.addView(cover, new LinearLayout.LayoutParams(dp(40), dp(40)));
+
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(0,
+                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
+        detailsParams.leftMargin = dp(12);
+        details.addView(text(track.title, 15, Color.WHITE, true));
+        details.addView(text(track.artist, 12, MUTED, false));
+        row.addView(details, detailsParams);
+
+        TextView more = text("⋯", 18, MUTED, true);
+        more.setGravity(Gravity.CENTER);
+        row.addView(more, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        more.setOnClickListener(v -> {
+            if (track != null) addTrackToPlaylistDialog(track);
+        });
+        return row;
+    }
+
+    private LinearLayout songRow(int index, Playlist playlist) {
+        LinearLayout row = songRow(index);
+        if (playlist == null) return row;
+        ArrayList<Track> library = allTracks();
+        if (index >= 0 && index < library.size()) {
+            Track track = library.get(index);
+            TextView remove = text("−", 22, Color.rgb(255, 120, 120), true);
+            remove.setGravity(Gravity.CENTER);
+            remove.setPadding(dp(8), 0, dp(8), 0);
+            remove.setOnClickListener(v -> removeTrackFromPlaylist(playlist, track));
+            row.addView(remove, new LinearLayout.LayoutParams(dp(32), dp(32)));
+        }
+        return row;
     }
 
     private void showAuth(boolean register) {
@@ -773,9 +914,18 @@ public class MainActivity extends AppCompatActivity {
         introParams.topMargin = dp(8);
         introParams.bottomMargin = dp(16);
         root.addView(intro, introParams);
-        ArrayList<Track> library = allTracks();
-        ArrayList<Integer> visibleTracks = new ArrayList<>();
-        for (int i = 0; i < library.size(); i++) visibleTracks.add(i);
+
+        EditText searchInput = input("Maghanap ng kanta o artist", false);
+        searchInput.setSingleLine(true);
+        searchInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        searchInput.setPadding(dp(16), dp(8), dp(16), dp(8));
+        searchInput.setBackground(round(SURFACE, 12));
+        LinearLayout.LayoutParams searchParams = matchWrap();
+        searchParams.leftMargin = dp(20);
+        searchParams.rightMargin = dp(20);
+        searchParams.bottomMargin = dp(10);
+        root.addView(searchInput, searchParams);
+
         ScrollView scroll = new ScrollView(this);
         scroll.setFillViewport(true);
         LinearLayout content = new LinearLayout(this);
@@ -784,6 +934,7 @@ public class MainActivity extends AppCompatActivity {
         scroll.addView(content);
         root.addView(scroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
         LinearLayout playlistHeading = row();
         playlistHeading.setGravity(Gravity.CENTER_VERTICAL);
         TextView playlistTitle = text("Mga playlist", 20, Color.WHITE, true);
@@ -806,148 +957,64 @@ public class MainActivity extends AppCompatActivity {
                 content.addView(playlistRow(playlist));
             }
         }
+
         TextView songsTitle = text("Mga kanta", 20, Color.WHITE, true);
         LinearLayout.LayoutParams songsTitleParams = matchWrap();
         songsTitleParams.topMargin = dp(22);
         songsTitleParams.bottomMargin = dp(8);
         content.addView(songsTitle, songsTitleParams);
-        if (visibleTracks.isEmpty()) {
-            TextView empty = text("Wala pang kanta sa library. Lalabas dito ang mga kantang available mula sa online catalog.", 14, MUTED, false);
-            empty.setPadding(dp(16), dp(18), dp(16), dp(18));
-            empty.setBackground(round(SURFACE, 12));
-            content.addView(empty, matchWrap());
-        } else {
-            for (int index : visibleTracks) content.addView(songRow(index));
-        }
+
+        LinearLayout songList = new LinearLayout(this);
+        songList.setOrientation(LinearLayout.VERTICAL);
+        content.addView(songList, matchWrap());
+
+        Runnable updateSongList = () -> {
+            String query = searchInput.getText().toString().trim().toLowerCase(Locale.ROOT);
+            ArrayList<Track> library = allTracks();
+            songList.removeAllViews();
+            if (library.isEmpty()) {
+                TextView empty = text("Wala pang kanta sa library. Lalabas dito ang mga kantang available mula sa online catalog.", 14, MUTED, false);
+                empty.setPadding(dp(16), dp(18), dp(16), dp(18));
+                empty.setBackground(round(SURFACE, 12));
+                songList.addView(empty, matchWrap());
+                return;
+            }
+            boolean hasMatches = false;
+            for (int index = 0; index < library.size(); index++) {
+                Track track = library.get(index);
+                if (!query.isEmpty() && !(track.title + " " + track.artist).toLowerCase(Locale.ROOT).contains(query)) {
+                    continue;
+                }
+                hasMatches = true;
+                songList.addView(songRow(index));
+            }
+            if (!hasMatches) {
+                TextView empty = text("Walang tugmang kanta para sa " + quoteSearch(query) + ".", 14, MUTED, false);
+                empty.setPadding(dp(16), dp(18), dp(16), dp(18));
+                empty.setBackground(round(SURFACE, 12));
+                songList.addView(empty, matchWrap());
+            }
+        };
+        searchInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
+            @Override public void afterTextChanged(Editable s) {
+                updateSongList.run();
+            }
+        });
+
+        updateSongList.run();
         addMiniPlayer(root);
         addBottomNav(root);
         setContentView(root);
     }
 
-    private void addBottomNav(LinearLayout root) {
-        LinearLayout nav = row();
-        nav.setGravity(Gravity.CENTER);
-        nav.setBackgroundColor(SURFACE);
-        nav.setPadding(0, dp(4), 0, dp(4));
-        String[] tabs = {"⌂\nHome", "▤\nLibrary", "⚙\nSettings"};
-        for (String tab : tabs) {
-            String label = tab.substring(tab.indexOf('\n') + 1);
-            TextView item = text(tab, 12, label.equals(activeTab) ? GREEN : MUTED, true);
-            item.setGravity(Gravity.CENTER);
-            if (label.equals(activeTab)) item.setBackground(round(Color.rgb(38, 59, 45), 12));
-            item.setContentDescription(label + (label.equals(activeTab) ? ", napili" : ""));
-            nav.addView(item, new LinearLayout.LayoutParams(0, dp(52), 1));
-            item.setOnClickListener(v -> {
-                fullPlayerOpen = false;
-                fullSeekBar = null;
-                fullElapsedTime = null;
-                fullDurationTime = null;
-                fullRepeatButton = null;
-                if ("Settings".equals(label)) {
-                    activeTab = "Settings";
-                    showServerSettings();
-                    return;
-                }
-                activeTab = label;
-                if ("Library".equals(label)) showLibrary();
-                else showHome();
-            });
-        }
-        root.addView(nav);
+    private String quoteSearch(String query) {
+        return query.isEmpty() ? "ang hinahanap mo" : "\"" + query + "\"";
     }
 
-    private void populateRecentlyPlayed(LinearLayout trackList) {
-        trackList.removeAllViews();
-        ArrayList<Track> library = allTracks();
-        int matches = 0;
-        for (String trackId : recentlyPlayedTrackIds) {
-            int index = findTrackIndex(trackId);
-            if (index < 0) continue;
-            Track track = library.get(index);
-            if (offlineOnly && track.online && !track.isCached()) continue;
-            trackList.addView(songRow(index));
-            matches++;
-        }
-        if (matches == 0) {
-            String message = offlineOnly
-                    ? "Wala pang kamakailang pinatugtog na kantang naka-save offline."
-                    : "Wala pang recent plays. Kapag nagpatugtog ka ng kanta, lalabas ito rito.";
-            TextView empty = text(message, 14, MUTED, false);
-            empty.setPadding(dp(16), dp(18), dp(16), dp(18));
-            empty.setBackground(round(SURFACE, 12));
-            trackList.addView(empty, matchWrap());
-        }
-    }
-
-    private View songRow(int index) {
-        return songRow(index, null);
-    }
-
-    private View songRow(int index, Playlist playlist) {
-        ArrayList<Track> library = allTracks();
-        if (index < 0 || index >= library.size()) return new View(this);
-        Track track = library.get(index);
-        LinearLayout item = row();
-        item.setGravity(Gravity.CENTER_VERTICAL);
-        item.setPadding(0, dp(7), 0, dp(7));
-        TextView cover = text("♫", 22, Color.WHITE, true);
-        cover.setGravity(Gravity.CENTER);
-        cover.setBackground(round(Color.rgb(38, 59, 45), 10));
-        item.addView(cover, new LinearLayout.LayoutParams(dp(52), dp(52)));
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-        details.addView(text(track.title, 15, Color.WHITE, true));
-        String trackSubtitle = track.artist + (track.isCached() ? " · Offline" :
-                track.isAudius() ? " · Audius · Online lang" : "");
-        details.addView(text(trackSubtitle, 13, MUTED, false));
-        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(0, -2, 1);
-        detailsParams.leftMargin = dp(12);
-        item.addView(details, detailsParams);
-        TextView play = text(index == currentTrack && isPlaying ? "Ⅱ" : "▶", 16, GREEN, true);
-        play.setGravity(Gravity.CENTER);
-        item.addView(play, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        TextView action = text(playlist == null ? "+" : "−", 22,
-                playlist == null ? MUTED : Color.rgb(235, 105, 105), true);
-        action.setGravity(Gravity.CENTER);
-        action.setContentDescription(playlist == null ? "Idagdag sa playlist" : "Alisin sa playlist");
-        item.addView(action, new LinearLayout.LayoutParams(dp(38), dp(48)));
-        action.setOnClickListener(v -> {
-            if (playlist == null) addTrackToPlaylistDialog(track);
-            else removeTrackFromPlaylist(playlist, track);
-        });
-        item.setOnClickListener(v -> {
-            if (playlist == null) playTrack(index);
-            else playPlaylist(playlist, track.id);
-        });
-        return item;
-    }
-
-    private View playlistRow(Playlist playlist) {
-        LinearLayout card = row();
-        card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(12), dp(10), dp(8), dp(10));
-        card.setBackground(round(SURFACE, 12));
-        TextView cover = text("♫", 22, GREEN, true);
-        cover.setGravity(Gravity.CENTER);
-        cover.setBackground(round(Color.rgb(38, 59, 45), 10));
-        card.addView(cover, new LinearLayout.LayoutParams(dp(48), dp(48)));
-        LinearLayout details = new LinearLayout(this);
-        details.setOrientation(LinearLayout.VERTICAL);
-        details.addView(text(playlist.name, 15, Color.WHITE, true));
-        details.addView(text(playlist.tracks.size() + " kanta", 12, MUTED, false));
-        LinearLayout.LayoutParams detailsParams = new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1);
-        detailsParams.leftMargin = dp(12);
-        card.addView(details, detailsParams);
-        TextView more = text("⋮", 22, MUTED, true);
-        more.setGravity(Gravity.CENTER);
-        card.addView(more, new LinearLayout.LayoutParams(dp(40), dp(48)));
-        more.setOnClickListener(v -> showPlaylistOptions(playlist));
-        card.setOnClickListener(v -> showPlaylist(playlist));
-        LinearLayout.LayoutParams cardParams = matchWrap();
-        cardParams.topMargin = dp(8);
-        card.setLayoutParams(cardParams);
-        return card;
+    private void refreshLibraryContent(LinearLayout content, ArrayList<Integer> visibleTracks) {
+        content.removeViews(playlistSectionIndex(content), content.getChildCount() - 0);
     }
 
     private void showCreatePlaylistDialog() {
