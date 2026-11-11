@@ -12,6 +12,12 @@ const storageNotice = document.querySelector("#storage-notice");
 const fileInput = document.querySelector("#audio-file");
 const fileHelp = document.querySelector("#file-help");
 const adminList = document.querySelector("#admin-track-list");
+const userList = document.querySelector("#admin-user-list");
+const userCount = document.querySelector("#user-count");
+const musicTab = document.querySelector("#music-tab");
+const usersTab = document.querySelector("#users-tab");
+const musicContent = document.querySelector("#music-content");
+const usersContent = document.querySelector("#users-content");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -162,6 +168,67 @@ async function loadAdminTracks() {
   }
 }
 
+async function loadAdminUsers() {
+  userList.replaceChildren();
+  const loading = document.createElement("p");
+  loading.className = "muted";
+  loading.textContent = "Kinukuha ang mga registered user…";
+  userList.append(loading);
+  try {
+    const { users } = await requestJson("/api/admin/users");
+    userCount.textContent = `${users.length} user${users.length === 1 ? "" : "s"}`;
+    userList.replaceChildren();
+    if (!users.length) {
+      const empty = document.createElement("p");
+      empty.className = "muted";
+      empty.textContent = "Wala pang verified na nag-register sa APK.";
+      userList.append(empty);
+      return;
+    }
+    for (const user of users) {
+      const row = document.createElement("article");
+      row.className = "admin-user";
+      const meta = document.createElement("div");
+      meta.className = "track-meta";
+      const name = document.createElement("strong");
+      name.textContent = user.name;
+      const email = document.createElement("span");
+      email.textContent = user.email;
+      const joined = document.createElement("span");
+      const registeredDate = new Date(user.createdAt);
+      joined.textContent = `Nag-register ${Number.isNaN(registeredDate.getTime())
+        ? "—"
+        : registeredDate.toLocaleDateString("fil-PH", {
+          year: "numeric", month: "short", day: "numeric",
+        })}`;
+      meta.append(name, email, joined);
+      const verified = document.createElement("span");
+      verified.className = "user-verified";
+      verified.textContent = "✓ Verified";
+      row.append(meta, verified);
+      userList.append(row);
+    }
+  } catch (error) {
+    userCount.textContent = "— users";
+    userList.replaceChildren();
+    const message = document.createElement("p");
+    message.className = "muted form-message is-error";
+    message.textContent = `Hindi makuha ang users: ${error.message}`;
+    userList.append(message);
+  }
+}
+
+function selectAdminTab(tab) {
+  const showUsers = tab === "users";
+  musicTab.classList.toggle("active", !showUsers);
+  usersTab.classList.toggle("active", showUsers);
+  musicTab.setAttribute("aria-selected", String(!showUsers));
+  usersTab.setAttribute("aria-selected", String(showUsers));
+  musicContent.classList.toggle("hidden", showUsers);
+  usersContent.classList.toggle("hidden", !showUsers);
+  if (showUsers) loadAdminUsers();
+}
+
 loginForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   loginMessage.textContent = "";
@@ -182,6 +249,7 @@ loginForm.addEventListener("submit", async (event) => {
     });
     loginForm.reset();
     setAuthenticated(true);
+    selectAdminTab("music");
     await Promise.all([loadAdminTracks(), loadAdminStorage()]);
   } catch (error) {
     loginMessage.textContent = error.message;
@@ -192,6 +260,9 @@ loginForm.addEventListener("submit", async (event) => {
     loginButton.innerHTML = "<span>Mag-log in</span><span aria-hidden=\"true\">→</span>";
   }
 });
+
+musicTab.addEventListener("click", () => selectAdminTab("music"));
+usersTab.addEventListener("click", () => selectAdminTab("users"));
 
 passwordToggle.addEventListener("click", () => {
   const visible = passwordInput.type === "password";

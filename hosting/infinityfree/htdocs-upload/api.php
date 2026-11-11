@@ -6,12 +6,15 @@ if (is_file($mailerAutoload)) {
     require_once $mailerAutoload;
 }
 
-function respond(int $status, array $data): never
+function respond(int $status, array $data, array $headers = []): never
 {
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
     header('X-Content-Type-Options: nosniff');
+    foreach ($headers as $name => $value) {
+        header($name . ': ' . $value);
+    }
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -385,7 +388,7 @@ function loginUser(PDO $pdo): never
     $token = bin2hex(random_bytes(32));
     $insert = $pdo->prepare(
         'INSERT INTO user_sessions (token_hash, user_id, expires_at)
-         VALUES (:token_hash, :user_id, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 DAY))'
+         VALUES (:token_hash, :user_id, \'9999-12-31 23:59:59\')'
     );
     $insert->execute([
         ':token_hash' => hash('sha256', $token),
@@ -428,6 +431,11 @@ function authenticatedUser(PDO $pdo): array
 function getAuthSession(PDO $pdo): never
 {
     $user = authenticatedUser($pdo);
+    $extend = $pdo->prepare(
+        'UPDATE user_sessions SET expires_at = \'9999-12-31 23:59:59\'
+         WHERE token_hash = :token_hash AND expires_at > UTC_TIMESTAMP()'
+    );
+    $extend->execute([':token_hash' => $user['token_hash']]);
     respond(200, ['name' => $user['name'], 'email' => $user['email']]);
 }
 
@@ -458,6 +466,125 @@ function allTracks(PDO $pdo): array
          FROM tracks ORDER BY uploaded_at DESC, id DESC'
     )->fetchAll();
     return array_map('publicTrack', $rows);
+}
+
+function normalizeLyricsMatch(string $value): string
+{
+    $value = mb_strtolower($value, 'UTF-8');
+    $normalized = preg_replace('/[^\p{L}\p{N}]+/u', '', $value);
+    if (!is_string($normalized)) {
+        return '';
+    }
+    return $normalized;
+}
+
+function getLrclibLyrics(string $title, string $artist, int $duration): never
+{
+    $parameters = [
+        'track_name' => $title,
+        'artist_name' => $artist,
+    ];
+    if ($duration > 0) {
+        $parameters['duration'] = $duration;
+    }
+    $query = http_build_query($parameters);
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'header' => "Accept: application/json\r\n" .
+                "User-Agent: Spatibai/1.0 (https://spatibai.onrender.com)\r\n",
+            'timeout' => 12,
+            'ignore_errors' => true,
+        ],
+    ]);
+    $raw = file_get_contents('https://lrclib.net/api/get?' . $query, false, $context);
+    if (!is_string($raw)) {
+        error_log('LRCLIB lyrics request failed.');
+        fail(502, 'Hindi makakonekta sa libreng lyrics service. Subukan ulit mamaya.');
+    }
+    $httpStatus = 0;
+    $retryAfter = 1;
+    foreach (($http_response_header ?? []) as $index => $line) {
+        if ($index === 0 && preg_match('/\s(\d{3})\s/', $line, $matches)) {
+            $httpStatus = (int)$matches[1];
+        } elseif (stripos($line, 'Retry-After:') === 0) {
+            $retryAfter = max(1, (int)trim(substr($line, strlen('Retry-After:'))));
+        }
+    }
+    if ($httpStatus === 404) {
+        fail(404, 'Walang nahanap na lyrics para sa kantang ito.');
+    }
+    if ($httpStatus === 429 || $httpStatus === 503) {
+        respond(503, [
+            'error' => 'Pansamantalang abala ang lyrics service. Subukan ulit mamaya.',
+            'retryAfterSeconds' => $retryAfter,
+        ], ['Retry-After' => (string)$retryAfter]);
+    }
+    if ($httpStatus < 200 || $httpStatus >= 300) {
+        error_log('LRCLIB returned HTTP ' . $httpStatus . '.');
+        fail(502, 'Hindi makuha ang lyrics sa ngayon. Subukan ulit mamaya.');
+    }
+    $record = json_decode($raw, true);
+    if (!is_array($record)) {
+        fail(502, 'Hindi mabasa ang tugon ng lyrics service.');
+    }
+
+    if (normalizeLyricsMatch((string)($record['trackName'] ?? '')) !== normalizeLyricsMatch($title) ||
+        normalizeLyricsMatch((string)($record['artistName'] ?? '')) !== normalizeLyricsMatch($artist)) {
+        fail(404, 'Walang eksaktong tugmang lyrics para sa kantang ito.');
+    }
+    if ($duration > 0 &&
+        (!isset($record['duration']) || !is_numeric($record['duration']) ||
+            abs($duration - (float)$record['duration']) > 5)) {
+        fail(404, 'Hindi tugma ang haba ng bersyon ng kantang ito sa lyrics.');
+    }
+    if (!empty($record['instrumental'])) {
+        fail(404, 'Instrumental ang kantang ito at walang lyrics.');
+    }
+
+    $syncedLyrics = trim((string)($record['syncedLyrics'] ?? ''));
+    $text = trim((string)($record['plainLyrics'] ?? ''));
+    if ($text === '' && $syncedLyrics !== '') {
+        $text = preg_replace('/^\s*\[\d{2}:\d{2}(?:\.\d{1,3})?\]\s*/m', '', $syncedLyrics) ?? '';
+        $text = trim($text);
+    }
+    if ($text === '') {
+        fail(404, 'Walang displayable lyrics para sa kantang ito.');
+    }
+    respond(200, [
+        'lyrics' => $text,
+        'syncedLyrics' => $syncedLyrics,
+        'provider' => 'LRCLIB',
+        'attribution' => 'Lyrics via LRCLIB',
+        'backlinkUrl' => 'https://lrclib.net',
+    ]);
+}
+
+function getTrackLyrics(PDO $pdo, string $id, string $durationValue): never
+{
+    if (!preg_match('/^[a-f0-9-]{36}$/i', $id)) {
+        fail(400, 'Invalid track ID.');
+    }
+    $duration = $durationValue === '' ? 0 : filter_var($durationValue, FILTER_VALIDATE_INT);
+    if ($duration === false || $duration === null) {
+        fail(400, 'Invalid track duration.');
+    }
+    if ($duration < 0 || $duration > 3600) {
+        fail(400, 'Invalid track duration.');
+    }
+
+    $select = $pdo->prepare('SELECT title, artist FROM tracks WHERE id = :id');
+    $select->execute([':id' => $id]);
+    $track = $select->fetch();
+    if (!$track) {
+        fail(404, 'Track not found.');
+    }
+
+    getLrclibLyrics(
+        (string)$track['title'],
+        (string)$track['artist'],
+        $duration
+    );
 }
 
 function audioMime(string $extension): ?string
@@ -709,6 +836,13 @@ try {
     }
     if ($method === 'GET' && $route === 'tracks') {
         respond(200, ['tracks' => allTracks($pdo)]);
+    }
+    if ($method === 'GET' && $route === 'lyrics') {
+        getTrackLyrics(
+            $pdo,
+            is_string($_GET['id'] ?? null) ? $_GET['id'] : '',
+            is_string($_GET['duration'] ?? null) ? $_GET['duration'] : ''
+        );
     }
 
     if ($method === 'GET' && $route === 'admin-session') {

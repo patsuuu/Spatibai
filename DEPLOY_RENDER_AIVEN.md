@@ -48,13 +48,15 @@ Cloudflare R2 has a free monthly allowance for standard storage and operations. 
 
 ## 4. Upload owned or licensed music
 
-Use `/admin` to select and upload up to 20 audio files at once (100 MB per file, 500 MB per batch). The server reads embedded title and artist tags automatically; if tags are missing, it uses an `Artist - Title` filename when possible, otherwise the filename and “Unknown artist.” Each successful file is added to the persistent R2 catalog and synced by the Android app for offline playback. Upload only audio you own or have permission to distribute.
+Use `/admin` to select and upload up to 20 audio files at once (100 MB per file, 500 MB per batch). The protected **Users** tab lists verified accounts registered from the Android app; it displays account names, email addresses, and registration dates, but never passwords or session tokens. The server reads embedded title and artist tags automatically; if tags are missing, it uses an `Artist - Title` filename when possible, otherwise the filename and “Unknown artist.” Each successful file is added to the persistent R2 catalog and synced by the Android app for offline playback. Upload only audio you own or have permission to distribute.
 
 ## 5. Existing Audius imports
 
 Previously imported Audius tracks remain in the catalog and stream from Audius with an internet connection; the Android app does not cache them offline. The admin interface no longer searches/imports Audius tracks. This is a community-uploaded catalog, not the complete Spotify catalog. Check each creator's rights and track license.
 
 If the catalog contains previously imported Audius tracks, the server may use `AUDIUS_API_KEY` for their stream requests. New Audius search/import is no longer available in the admin. See the [Audius developer docs](https://docs.audius.co/sdk) and current terms if you continue serving those legacy catalog entries.
+
+The Android app looks up lyrics automatically from LRCLIB when a song is opened in the full player. LRCLIB's API is free to access without an API key; the server identifies itself with the required user-agent and backs off when rate-limited. Lyrics availability and text accuracy depend on LRCLIB's catalog, so not every track will have a match. The app checks exact title/artist and, when duration is available, rejects versions more than five seconds apart. The current-line indicator follows LRCLIB's line timestamps; it is not word-by-word karaoke timing. Fetched lyrics are not persisted.
 
 ## 6. Point the Android app at Render
 

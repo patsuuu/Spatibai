@@ -350,6 +350,10 @@ audio { display: none; }
 .dashboard-heading .hero-copy { color: var(--muted); line-height: 1.6; }
 .dashboard-status { padding: 9px 12px; display: flex; flex: 0 0 auto; align-items: center; gap: 8px; border: 1px solid #2b3c30; border-radius: 20px; background: #151e17; color: #a9b8ad; font-size: 11px; }
 .dashboard-status span { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 12px rgba(30,215,96,.65); }
+.admin-tabs { margin: 0 0 20px; display: flex; gap: 8px; border-bottom: 1px solid var(--line); }
+.admin-tab { min-height: 42px; padding: 0 16px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 700; }
+.admin-tab:hover, .admin-tab.active { color: var(--green); }
+.admin-tab.active { border-bottom-color: var(--green); }
 .dashboard-grid { display: grid; grid-template-columns: minmax(300px, .92fr) minmax(0, 1.08fr); align-items: stretch; gap: 20px; }
 .dashboard-grid .panel { min-width: 0; margin: 0; padding: 24px; border-radius: 16px; }
 .dashboard-grid .section-heading h2 { font-size: 20px; }
@@ -374,6 +378,14 @@ audio { display: none; }
 .admin-track .track-meta strong { color: var(--text); }
 .admin-track .track-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-track-list > .muted { padding: 16px 0 4px; }
+.users-panel { padding: 24px; border-radius: 16px; }
+.admin-user-list { border-top: 1px solid var(--line); }
+.admin-user { min-height: 72px; padding: 12px 2px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--line); }
+.admin-user .track-meta { min-width: 0; }
+.admin-user .track-meta strong { color: var(--text); }
+.admin-user .track-meta span { overflow-wrap: anywhere; }
+.user-verified { flex: 0 0 auto; color: #a7d6b3; font-size: 11px; }
+.admin-user-list .form-message { color: #ffaaaa; }
 
 @media (max-width: 900px) {
   .admin-shell { grid-template-columns: 220px minmax(0, 1fr); }

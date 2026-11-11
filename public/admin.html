@@ -49,7 +49,7 @@
         <div class="login-intro">
           <p class="eyebrow">SPATIBAI STUDIO</p>
           <h1>Magandang tugtog.<br><span>Maayos na library.</span></h1>
-          <p class="login-lead">Mag-log in para mag-upload, mag-ayos, at magtanggal ng mga kantang nasa Spatibai.</p>
+          <p class="login-lead">Mag-log in para mamahala ng mga kanta at makita ang mga nag-register na user sa APK.</p>
           <div class="login-feature"><span aria-hidden="true">♫</span><span>Isang lugar para sa lahat ng kantang ibinabahagi mo.</span></div>
         </div>
         <section class="login-card">
@@ -78,11 +78,18 @@
         <header class="dashboard-heading">
           <div>
             <p class="eyebrow">SPATIBAI STUDIO / ADMIN</p>
-            <h1>Music <span>management.</span></h1>
-            <p class="hero-copy">I-manage ang mga kantang maririnig sa iyong library.</p>
+            <h1>Admin <span>management.</span></h1>
+            <p class="hero-copy">I-manage ang music library at tingnan ang mga nag-register sa APK.</p>
           </div>
           <div class="dashboard-status"><span></span> Admin workspace</div>
         </header>
+        <div class="admin-tabs" role="tablist" aria-label="Admin sections">
+          <button class="admin-tab active" id="music-tab" type="button" role="tab"
+            aria-selected="true" aria-controls="music-content">Music</button>
+          <button class="admin-tab" id="users-tab" type="button" role="tab"
+            aria-selected="false" aria-controls="users-content">Users</button>
+        </div>
+        <section id="music-content" role="tabpanel" aria-labelledby="music-tab">
         <div class="dashboard-grid">
           <section class="panel upload-panel">
             <div class="section-heading compact">
@@ -108,6 +115,15 @@
           </section>
         </div>
         <p class="dashboard-footnote">Pumili ng maraming kanta sa isang upload. Awtomatikong babasahin ang title at artist mula sa audio tags; gumamit ng “Artist - Title” na filename kung walang tags. Mag-upload lamang ng sariling kanta o audio na may pahintulot kang ipamahagi.</p>
+        </section>
+        <section class="panel users-panel hidden" id="users-content" role="tabpanel"
+          aria-labelledby="users-tab">
+          <div class="section-heading compact">
+            <div><p class="eyebrow">APK ACCOUNTS</p><h2>Registered users</h2></div>
+            <span class="count" id="user-count">0 users</span>
+          </div>
+          <div class="admin-user-list" id="admin-user-list" aria-live="polite"></div>
+        </section>
       </section>
     </main>
   </div>

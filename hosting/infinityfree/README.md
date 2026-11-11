@@ -29,7 +29,9 @@ Replace the example password before running the command, then copy the printed h
 
 **Credential safety:** `config.example.php` is a template only; never put working database or Gmail credentials in it. If credentials were ever placed in a template or uploaded publicly, immediately change the database password in the hosting control panel and revoke the Gmail App Password, then place newly generated credentials only in the private server-side `config.php`.
 
-App registrations receive a six-digit code at the submitted email address in production. Codes expire after 15 minutes and allow up to five verification attempts. The account is inserted into `users` only after the code is confirmed. Users must verify their email before they can log in. Passwords must be 8–72 characters and are stored as PHP password hashes; app sessions use expiring, revocable random tokens.
+App registrations receive a six-digit code at the submitted email address in production. Codes expire after 15 minutes and allow up to five verification attempts. The account is inserted into `users` only after the code is confirmed. Users must verify their email before they can log in. Passwords must be 8–72 characters and are stored as PHP password hashes; app sessions use revocable random tokens that remain valid until logout.
+
+The Android player automatically looks up lyrics from LRCLIB. The LRCLIB API is free to access without an API key; the server sends the required client-identification user-agent and backs off when rate-limited. Lyrics availability and text accuracy depend on the LRCLIB catalog, so not every track will have a match. The app checks exact title/artist and, when duration is available, rejects versions more than five seconds apart. The current-line indicator follows LRCLIB's line timestamps; it is not word-by-word karaoke timing. Fetched lyrics are not saved in the catalog.
 
 Create `htdocs/storage/audio`. It must be writable by PHP; start with the hosting panel's file manager permissions and avoid granting more access than necessary. Files in this folder are blocked from direct access by its `.htaccess`; the API streams them to the player.
 

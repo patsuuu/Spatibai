@@ -49,10 +49,13 @@ const MAX_UPLOAD_FILES = 20;
 const MAX_UPLOAD_REQUEST_BYTES = 500 * 1024 * 1024;
 const AUDIUS_API_BASE = "https://api.audius.co/v1";
 const AUDIUS_API_KEY = process.env.AUDIUS_API_KEY?.trim();
+const LRCLIB_API_BASE = "https://lrclib.net/api";
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const AUTH_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const sessions = new Map();
 const loginAttempts = new Map();
+let lrclibRequestQueue = Promise.resolve();
+let lastLrclibRequestAt = 0;
 const scrypt = promisify(crypto.scrypt);
 const databaseConfig = {
   host: process.env.DB_HOST,
@@ -101,11 +104,12 @@ if (Buffer.byteLength(ADMIN_PASSWORD, "utf8") < 8) {
   process.exit(1);
 }
 
-function sendJson(res, status, value) {
+function sendJson(res, status, value, headers = {}) {
   res.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
+    ...headers,
   });
   res.end(JSON.stringify(value));
 }
@@ -301,6 +305,115 @@ async function requestAudius(endpoint, params = {}) {
     throw httpError(502, "Hindi mabasa ang sagot ng Audius.");
   }
   return body.data;
+}
+
+function normalizeLyricsMatch(value) {
+  return String(value || "")
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]/gu, "");
+}
+
+async function waitForLrclibSlot() {
+  const previous = lrclibRequestQueue;
+  let release;
+  lrclibRequestQueue = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  const delay = Math.max(0, lastLrclibRequestAt + 250 - Date.now());
+  if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+  lastLrclibRequestAt = Date.now();
+  release();
+}
+
+async function getLrclibLyrics(track, duration) {
+  const url = new URL(`${LRCLIB_API_BASE}/get`);
+  url.searchParams.set("track_name", track.title);
+  url.searchParams.set("artist_name", track.artist || "");
+  if (duration) url.searchParams.set("duration", String(duration));
+
+  let response;
+  try {
+    await waitForLrclibSlot();
+    response = await fetch(url, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "Spatibai/1.0 (https://spatibai.onrender.com)",
+      },
+      signal: AbortSignal.timeout(12000),
+    });
+  } catch (error) {
+    console.error("LRCLIB lyrics request failed:", error);
+    throw httpError(502, "Hindi makakonekta sa libreng lyrics service. Subukan ulit mamaya.");
+  }
+  if (response.status === 404) {
+    throw httpError(404, "Walang nahanap na lyrics para sa kantang ito.");
+  }
+  if (response.status === 429 || response.status === 503) {
+    const retryAfterSeconds = Math.max(1, Number(response.headers.get("Retry-After")) || 1);
+    const error = httpError(503, "Pansamantalang abala ang lyrics service. Subukan ulit mamaya.");
+    error.retryAfterSeconds = retryAfterSeconds;
+    throw error;
+  }
+  if (!response.ok) {
+    console.error(`LRCLIB returned HTTP ${response.status}.`);
+    throw httpError(502, "Hindi makuha ang lyrics sa ngayon. Subukan ulit mamaya.");
+  }
+
+  let record;
+  try {
+    record = await response.json();
+  } catch {
+    throw httpError(502, "Hindi mabasa ang tugon ng lyrics service.");
+  }
+  if (!record || normalizeLyricsMatch(record.trackName) !== normalizeLyricsMatch(track.title) ||
+      normalizeLyricsMatch(record.artistName) !== normalizeLyricsMatch(track.artist)) {
+    throw httpError(404, "Walang eksaktong tugmang lyrics para sa kantang ito.");
+  }
+  if (duration > 0 &&
+      (!Number.isFinite(Number(record.duration)) || Math.abs(duration - Number(record.duration)) > 5)) {
+    throw httpError(404, "Hindi tugma ang haba ng bersyon ng kantang ito sa lyrics.");
+  }
+  if (record.instrumental) throw httpError(404, "Instrumental ang kantang ito at walang lyrics.");
+
+  const syncedLyrics = typeof record.syncedLyrics === "string" ? record.syncedLyrics.trim() : "";
+  const plainLyrics = typeof record.plainLyrics === "string" ? record.plainLyrics.trim() : "";
+  const lyrics = plainLyrics || syncedLyrics
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*\[\d{2}:\d{2}(?:\.\d{1,3})?\]\s*/, "").trim())
+    .filter(Boolean)
+    .join("\n");
+  if (!lyrics) throw httpError(404, "Walang available na lyrics para sa kantang ito.");
+  return {
+    lyrics,
+    syncedLyrics,
+    provider: "LRCLIB",
+    attribution: "Lyrics via LRCLIB",
+    backlinkUrl: "https://lrclib.net",
+  };
+}
+
+async function getTrackLyrics(req, res, id, duration) {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw httpError(400, "Invalid track ID.");
+  const parsedDuration = duration === "" ? 0 : Number(duration);
+  if (!Number.isFinite(parsedDuration) ||
+      (parsedDuration !== 0 && (parsedDuration < 1 || parsedDuration > 3600))) {
+    throw httpError(400, "Invalid track duration.");
+  }
+  const track = (await loadTracks()).find((item) => item.id === id);
+  if (!track) throw httpError(404, "Track not found.");
+  if (typeof track.lyrics === "string" && track.lyrics.trim()) {
+    return sendJson(res, 200, {
+      lyrics: track.lyrics,
+      provider: "Catalog",
+      attribution: "",
+      backlinkUrl: "",
+      syncedLyrics: "",
+    });
+  }
+  return sendJson(res, 200, await getLrclibLyrics(track, parsedDuration));
 }
 
 function requireDatabase() {
@@ -601,7 +714,7 @@ async function loginUser(req, res) {
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
   await pool.execute(
     `INSERT INTO user_sessions (token_hash, user_id, expires_at)
-     VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 DAY))`,
+     VALUES (?, ?, '9999-12-31 23:59:59')`,
     [tokenHash, user.id],
   );
   sendJson(res, 200, { token, name: user.name, email: user.email });
@@ -613,6 +726,11 @@ async function getAuthSession(req, res) {
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
   if (!/^[a-f0-9]{64}$/.test(token)) throw httpError(401, "Mag-log in para magpatuloy.");
   const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  await pool.execute(
+    `UPDATE user_sessions SET expires_at = '9999-12-31 23:59:59'
+     WHERE token_hash = ? AND expires_at > UTC_TIMESTAMP()`,
+    [tokenHash],
+  );
   const [rows] = await pool.execute(
     `SELECT u.id, u.name, u.email FROM user_sessions s
      JOIN users u ON u.id = s.user_id
@@ -1006,6 +1124,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && apiRoute === "tracks") {
       return sendJson(res, 200, { tracks: await loadTracks() });
     }
+    if (req.method === "GET" && apiRoute === "lyrics") {
+      return await getTrackLyrics(
+        req, res, url.searchParams.get("id") || "", url.searchParams.get("duration") || "",
+      );
+    }
     if (req.method === "POST" && apiRoute === "auth-register") {
       return await registerUser(req, res);
     }
@@ -1039,6 +1162,15 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "GET" && pathname === "/api/admin/session") {
       return sendJson(res, 200, { authenticated: isAdmin(req) });
+    }
+    if (req.method === "GET" && pathname === "/api/admin/users") {
+      if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
+      const pool = requireDatabase();
+      const [users] = await pool.execute(
+        `SELECT name, email, created_at AS createdAt
+         FROM users ORDER BY created_at DESC, id DESC`,
+      );
+      return sendJson(res, 200, { users });
     }
     if (req.method === "GET" && pathname === "/api/admin/storage") {
       if (!isAdmin(req)) return sendJson(res, 401, { error: "Admin login required." });
@@ -1124,7 +1256,13 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     if (error.status) {
-      return sendJson(res, error.status, { error: error.message });
+      const headers = error.retryAfterSeconds
+        ? { "Retry-After": String(error.retryAfterSeconds) }
+        : {};
+      return sendJson(res, error.status, {
+        error: error.message,
+        ...(error.retryAfterSeconds ? { retryAfterSeconds: error.retryAfterSeconds } : {}),
+      }, headers);
     }
     console.error("Request failed:", error);
     sendJson(res, 500, { error: "An unexpected server error occurred." });

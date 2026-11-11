@@ -1,15 +1,21 @@
 package com.example.spatibai;
 
 import android.content.SharedPreferences;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaPlayer;
 import android.net.Uri;
+import android.graphics.Rect;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Bundle;
 import android.text.InputType;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -44,8 +50,14 @@ import java.io.InputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -57,6 +69,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int GREEN = Color.rgb(29, 215, 96);
     private static final String DEFAULT_SERVER_URL = "https://spatibai.onrender.com";
     private SharedPreferences preferences;
+    private SharedPreferences authPreferences;
     private final ArrayList<Track> onlineTracks = new ArrayList<>();
     private final ArrayList<Playlist> playlists = new ArrayList<>();
     private MediaPlayer mediaPlayer;
@@ -78,7 +91,17 @@ public class MainActivity extends AppCompatActivity {
     private String activeTab = "Home";
     private String activePlaylistId;
     private boolean fullPlayerOpen;
-    private String homeSearchQuery = "";
+    private TextView lyricsBodyView;
+    private TextView lyricsIndicatorView;
+    private TextView lyricsAttributionView;
+    private TextView lyricsProviderView;
+    private String lyricsViewTrackId;
+    private int activeLyricLine = -1;
+    private final Map<String, LyricsResult> sessionLyrics = new HashMap<>();
+    private final Map<String, Long> lyricsRetryAfter = new HashMap<>();
+    private final Set<String> lyricsRequests = new HashSet<>();
+    private final ArrayList<String> recentlyPlayedTrackIds = new ArrayList<>();
+    private static final int MAX_RECENTLY_PLAYED_TRACKS = 20;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
     private final ExecutorService authExecutor = Executors.newSingleThreadExecutor();
@@ -111,33 +134,40 @@ public class MainActivity extends AppCompatActivity {
         getWindow().setStatusBarColor(BACKGROUND);
         getWindow().setNavigationBarColor(BACKGROUND);
         preferences = getSharedPreferences(PREFS, MODE_PRIVATE);
+        authPreferences = getSharedPreferences("spatibai_auth", MODE_PRIVATE);
+        String legacyAuthToken = preferences.getString("auth_token", "");
+        if (!legacyAuthToken.isEmpty()) {
+            authPreferences.edit().putString("auth_token", legacyAuthToken).apply();
+            preferences.edit().remove("auth_token").apply();
+        }
         repeatMode = Math.max(0, Math.min(2, preferences.getInt("repeat_mode", 0)));
         restoreOnlineTracks();
+        restoreRecentlyPlayed();
         restorePlaylists();
-        String authToken = preferences.getString("auth_token", "");
+        String authToken = authPreferences.getString("auth_token", "");
         if (authToken.isEmpty()) {
             preferences.edit().remove("logged_in").remove("password_hash").apply();
             showAuth(false);
         } else {
-            preferences.edit().putBoolean("logged_in", false).apply();
-            showAuth(false);
-            requestAuth("auth-session", null, authToken, (response, error) -> {
-                if (error != null) {
-                    preferences.edit().remove("auth_token").remove("logged_in").apply();
+            preferences.edit().putBoolean("logged_in", true).apply();
+            showHome();
+            refreshOnlineTracks(false);
+            mainHandler.removeCallbacks(syncRunnable);
+            mainHandler.postDelayed(syncRunnable, 30_000);
+            requestAuth("auth-session", null, authToken, (response, error, status) -> {
+                if (status == 401) {
+                    authPreferences.edit().remove("auth_token").apply();
+                    preferences.edit().putBoolean("logged_in", false).apply();
                     showAuth(false);
-                    toast(error);
+                    toast(error == null ? "Mag-log in ulit para magpatuloy." : error);
                     return;
                 }
+                if (error != null) return;
                 preferences.edit()
                         .putString("name", response.optString("name", "Spatibai user"))
                         .putString("email", response.optString("email", ""))
                         .putBoolean("logged_in", true)
                         .apply();
-                restorePlaylists();
-                showHome();
-                refreshOnlineTracks(false);
-                mainHandler.removeCallbacks(syncRunnable);
-                mainHandler.postDelayed(syncRunnable, 30_000);
             });
         }
     }
@@ -228,7 +258,7 @@ public class MainActivity extends AppCompatActivity {
                             .put("email", email)
                             .put("password", password);
                     submit.setEnabled(false);
-                    requestAuth("auth-register", body, null, (response, error) -> {
+                    requestAuth("auth-register", body, null, (response, error, status) -> {
                         submit.setEnabled(true);
                         if (error != null) {
                             toast(error);
@@ -249,7 +279,7 @@ public class MainActivity extends AppCompatActivity {
                             .put("email", email)
                             .put("password", password);
                     submit.setEnabled(false);
-                    requestAuth("auth-login", body, null, (response, error) -> {
+                    requestAuth("auth-login", body, null, (response, error, status) -> {
                         submit.setEnabled(true);
                         if (error != null) {
                             toast(error);
@@ -263,9 +293,9 @@ public class MainActivity extends AppCompatActivity {
                         preferences.edit()
                                 .putString("name", response.optString("name", "Spatibai user"))
                                 .putString("email", response.optString("email", email))
-                                .putString("auth_token", token)
                                 .putBoolean("logged_in", true)
                                 .apply();
+                        authPreferences.edit().putString("auth_token", token).apply();
                         restorePlaylists();
                         showHome();
                         refreshOnlineTracks(false);
@@ -339,7 +369,7 @@ public class MainActivity extends AppCompatActivity {
             try {
                 JSONObject body = new JSONObject().put("email", email).put("code", code);
                 verify.setEnabled(false);
-                requestAuth("auth-verify", body, null, (response, error) -> {
+                requestAuth("auth-verify", body, null, (response, error, status) -> {
                     verify.setEnabled(true);
                     if (error != null) {
                         toast(error);
@@ -360,7 +390,7 @@ public class MainActivity extends AppCompatActivity {
         resend.setOnClickListener(v -> {
             try {
                 JSONObject body = new JSONObject().put("email", email);
-                requestAuth("auth-resend", body, null, (response, error) -> {
+                requestAuth("auth-resend", body, null, (response, error, status) -> {
                     if (error != null) toast(error);
                     else toast("Naipadala ulit ang verification code sa iyong email.");
                 });
@@ -377,15 +407,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private interface AuthCallback {
-        void onResult(JSONObject response, String error);
+        void onResult(JSONObject response, String error, int status);
     }
 
     private void requestAuth(String route, JSONObject body, String token, AuthCallback callback) {
         authExecutor.execute(() -> {
             JSONObject response = new JSONObject();
             String error = null;
+            int status = -1;
             try {
                 ApiResponse apiResponse = sendApiRequest(route, body, token);
+                status = apiResponse.status;
                 response = apiResponse.body;
                 if (apiResponse.status < 200 || apiResponse.status >= 300) {
                     error = response.optString("error", "Hindi naisagawa ang request. Subukan ulit.");
@@ -398,7 +430,8 @@ public class MainActivity extends AppCompatActivity {
             }
             JSONObject result = response;
             String resultError = error;
-            mainHandler.post(() -> callback.onResult(result, resultError));
+            int resultStatus = status;
+            mainHandler.post(() -> callback.onResult(result, resultError, resultStatus));
         });
     }
 
@@ -414,13 +447,27 @@ public class MainActivity extends AppCompatActivity {
 
     private ApiResponse sendApiRequest(String route, JSONObject body, String token)
             throws IOException, JSONException {
+        return sendApiRequest(route, body, token, null);
+    }
+
+    private ApiResponse sendApiRequest(String route, JSONObject body, String token,
+                                       Map<String, String> queryParameters)
+            throws IOException, JSONException {
         boolean getRequest = body == null &&
-                ("tracks".equals(route) || "auth-session".equals(route));
-        String endpoint = serverBaseUrl() + "/api.php?route=" +
-                java.net.URLEncoder.encode(route, StandardCharsets.UTF_8);
+                ("tracks".equals(route) || "auth-session".equals(route) || "lyrics".equals(route));
+        StringBuilder endpoint = new StringBuilder(serverBaseUrl()).append("/api.php?route=")
+                .append(java.net.URLEncoder.encode(route, StandardCharsets.UTF_8));
+        if (queryParameters != null) {
+            for (Map.Entry<String, String> entry : queryParameters.entrySet()) {
+                endpoint.append('&')
+                        .append(java.net.URLEncoder.encode(entry.getKey(), StandardCharsets.UTF_8))
+                        .append('=')
+                        .append(java.net.URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8));
+            }
+        }
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) new URL(endpoint).openConnection();
+            connection = (HttpURLConnection) new URL(endpoint.toString()).openConnection();
             connection.setRequestMethod(getRequest ? "GET" : "POST");
             connection.setConnectTimeout(30_000);
             connection.setReadTimeout(60_000);
@@ -458,7 +505,9 @@ public class MainActivity extends AppCompatActivity {
             try {
                 return new ApiResponse(status, new JSONObject(responseBody));
             } catch (JSONException exception) {
-                throw new IOException("The server returned a non-JSON API response.", exception);
+                throw new IOException(
+                        "The server returned a non-JSON API response (HTTP " + status + ").",
+                        exception);
             }
         } finally {
             if (connection != null) connection.disconnect();
@@ -527,6 +576,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showHome() {
+        activeTab = "Home";
         LinearLayout root = page();
         root.setPadding(0, 0, 0, 0);
 
@@ -587,31 +637,23 @@ public class MainActivity extends AppCompatActivity {
         content.addView(syncLabel, syncParams);
         syncLabel.setOnClickListener(v -> refreshOnlineTracks(true));
 
-        EditText search = input("⌕  Mga kanta o artist", false);
-        search.setSingleLine(true);
-        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
-        search.setText(homeSearchQuery);
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(54));
-        searchParams.bottomMargin = dp(24);
-        content.addView(search, searchParams);
-
-        TextView quickTitle = text("Mga kanta mo", 20, Color.WHITE, true);
+        TextView quickTitle = text("Kamakailang pinatugtog", 20, Color.WHITE, true);
         LinearLayout.LayoutParams sectionTitleParams = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sectionTitleParams.topMargin = dp(8);
         sectionTitleParams.bottomMargin = dp(12);
         content.addView(quickTitle, sectionTitleParams);
         LinearLayout trackList = new LinearLayout(this);
         trackList.setOrientation(LinearLayout.VERTICAL);
         content.addView(trackList, matchWrap());
-        populateHomeTracks(trackList, homeSearchQuery);
-        search.addTextChangedListener(new android.text.TextWatcher() {
-            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                homeSearchQuery = s.toString();
-                populateHomeTracks(trackList, homeSearchQuery);
-            }
-            @Override public void afterTextChanged(android.text.Editable s) {}
+        populateRecentlyPlayed(trackList);
+        TextView browseLibrary = text("Buksan ang buong Library  →", 14, GREEN, true);
+        LinearLayout.LayoutParams browseParams = wrap();
+        browseParams.topMargin = dp(18);
+        content.addView(browseLibrary, browseParams);
+        browseLibrary.setOnClickListener(v -> {
+            activeTab = "Library";
+            showLibrary();
         });
 
         addMiniPlayer(root);
@@ -697,15 +739,16 @@ public class MainActivity extends AppCompatActivity {
                 .setNegativeButton("Kanselahin", null)
                 .setPositiveButton("Mag-log out", (dialog, which) -> {
                     mainHandler.removeCallbacks(syncRunnable);
-                    String token = preferences.getString("auth_token", "");
+                    String token = authPreferences.getString("auth_token", "");
                     if (!token.isEmpty()) requestAuth("auth-logout", new JSONObject(), token,
-                            (response, error) -> {
+                            (response, error, status) -> {
                                 if (error != null) {
                                     toast("Na-log out ka sa device, pero hindi na-revoke ang session sa server.");
                                 }
                             });
                     releasePlayer();
-                    preferences.edit().remove("auth_token").putBoolean("logged_in", false).apply();
+                    authPreferences.edit().remove("auth_token").apply();
+                    preferences.edit().putBoolean("logged_in", false).apply();
                     activeTab = "Home";
                     showAuth(false);
                 })
@@ -813,28 +856,22 @@ public class MainActivity extends AppCompatActivity {
         root.addView(nav);
     }
 
-    private void populateHomeTracks(LinearLayout trackList, String query) {
+    private void populateRecentlyPlayed(LinearLayout trackList) {
         trackList.removeAllViews();
         ArrayList<Track> library = allTracks();
-        String normalizedQuery = query.trim().toLowerCase(Locale.ROOT);
         int matches = 0;
-        for (int i = 0; i < library.size(); i++) {
-            Track track = library.get(i);
+        for (String trackId : recentlyPlayedTrackIds) {
+            int index = findTrackIndex(trackId);
+            if (index < 0) continue;
+            Track track = library.get(index);
             if (offlineOnly && track.online && !track.isCached()) continue;
-            if (!(track.title + " " + track.artist).toLowerCase(Locale.ROOT)
-                    .contains(normalizedQuery)) continue;
-            trackList.addView(songRow(i));
+            trackList.addView(songRow(index));
             matches++;
         }
         if (matches == 0) {
-            String message;
-            if (!normalizedQuery.isEmpty()) {
-                message = "Walang kantang tumugma sa “" + query.trim() + "”. Subukan ang ibang salita.";
-            } else if (offlineOnly) {
-                message = "Wala pang kantang naka-save offline. Kumonekta sa internet at i-refresh ang library para ma-download ang mga kanta.";
-            } else {
-                message = "Wala pang kanta sa library. Lalabas dito ang mga kantang in-upload ng admin.";
-            }
+            String message = offlineOnly
+                    ? "Wala pang kamakailang pinatugtog na kantang naka-save offline."
+                    : "Wala pang recent plays. Kapag nagpatugtog ka ng kanta, lalabas ito rito.";
             TextView empty = text(message, 14, MUTED, false);
             empty.setPadding(dp(16), dp(18), dp(16), dp(18));
             empty.setBackground(round(SURFACE, 12));
@@ -1288,26 +1325,295 @@ public class MainActivity extends AppCompatActivity {
         lyricsCard.setPadding(dp(18), dp(18), dp(18), dp(18));
         lyricsCard.setBackground(round(SURFACE, 16));
         lyricsCard.addView(text("Lyrics", 20, Color.WHITE, true), matchWrap());
-        boolean hasLyrics = track != null && !track.lyrics.trim().isEmpty();
-        TextView lyrics = text(hasLyrics ? track.lyrics :
-                "Wala pang lyrics na inilagay para sa kantang ito. Maaaring idagdag ng admin ang lyrics sa song details.",
-                16, hasLyrics ? Color.WHITE : MUTED, false);
-        lyrics.setLineSpacing(dp(5), 1f);
-        lyrics.setTextIsSelectable(true);
+        lyricsViewTrackId = track == null ? null : track.id;
+        lyricsIndicatorView = text("", 12, GREEN, true);
+        lyricsIndicatorView.setVisibility(View.GONE);
+        LinearLayout.LayoutParams lyricsIndicatorParams = matchWrap();
+        lyricsIndicatorParams.topMargin = dp(8);
+        lyricsCard.addView(lyricsIndicatorView, lyricsIndicatorParams);
+        lyricsBodyView = text("", 16, Color.WHITE, false);
+        lyricsBodyView.setLineSpacing(dp(5), 1f);
+        lyricsAttributionView = text("", 12, MUTED, false);
+        lyricsAttributionView.setLineSpacing(dp(3), 1f);
+        lyricsProviderView = text("", 13, GREEN, true);
         LinearLayout.LayoutParams lyricsParams = matchWrap();
         lyricsParams.topMargin = dp(12);
-        lyricsCard.addView(lyrics, lyricsParams);
+        lyricsCard.addView(lyricsBodyView, lyricsParams);
+        LinearLayout.LayoutParams attributionParams = matchWrap();
+        attributionParams.topMargin = dp(12);
+        lyricsCard.addView(lyricsAttributionView, attributionParams);
+        LinearLayout.LayoutParams providerParams = matchWrap();
+        providerParams.topMargin = dp(8);
+        lyricsCard.addView(lyricsProviderView, providerParams);
         LinearLayout.LayoutParams lyricsCardParams = matchWrap();
         lyricsCardParams.topMargin = dp(26);
         content.addView(lyricsCard, lyricsCardParams);
+        renderLyrics(track);
 
         addBottomNav(root);
         setContentView(root);
         updateMiniProgress();
     }
 
+    private void renderLyrics(Track track) {
+        if (lyricsBodyView == null || track == null) return;
+        activeLyricLine = Integer.MIN_VALUE;
+        lyricsIndicatorView.setVisibility(View.GONE);
+        lyricsAttributionView.setVisibility(View.GONE);
+        lyricsProviderView.setVisibility(View.GONE);
+        if (!track.lyrics.trim().isEmpty()) {
+            lyricsBodyView.setText(track.lyrics);
+            return;
+        }
+        LyricsResult result = sessionLyrics.get(track.id);
+        if (result != null) {
+            if (result.timedLines.isEmpty()) {
+                lyricsBodyView.setText(result.lyrics);
+            } else {
+                lyricsIndicatorView.setText("♫ Naka-sync sa kanta");
+                lyricsIndicatorView.setVisibility(View.VISIBLE);
+                updateLyricsIndicator(currentPlaybackPosition());
+            }
+            if (!result.attribution.isEmpty()) {
+                lyricsAttributionView.setText(result.attribution);
+                lyricsAttributionView.setVisibility(View.VISIBLE);
+            }
+            if (!result.backlinkUrl.isEmpty()) {
+                lyricsProviderView.setText("Buksan ang " + result.provider);
+                lyricsProviderView.setVisibility(View.VISIBLE);
+                lyricsProviderView.setOnClickListener(v -> {
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(result.backlinkUrl)));
+                    } catch (android.content.ActivityNotFoundException exception) {
+                        toast("Hindi mabuksan ang lyrics source link.");
+                    }
+                });
+            }
+            return;
+        }
+        Long retryAt = lyricsRetryAfter.get(track.id);
+        if (retryAt != null && retryAt > System.currentTimeMillis()) {
+            long seconds = Math.max(1, (retryAt - System.currentTimeMillis() + 999) / 1000);
+            lyricsBodyView.setText("Sandali lang—subukan ulit makalipas ang " + seconds + " segundo.");
+            return;
+        }
+        lyricsBodyView.setText("Hinahanap ang lyrics…");
+        if (lyricsRequests.add(track.id)) requestTrackLyrics(track);
+    }
+
+    private void requestTrackLyrics(Track track) {
+        Map<String, String> parameters = new HashMap<>();
+        parameters.put("id", track.id);
+        MediaPlayer player = mediaPlayer;
+        if (player != null && playerPrepared && currentTrack >= 0) {
+            try {
+                parameters.put("duration", String.valueOf(Math.max(1, player.getDuration() / 1000)));
+            } catch (IllegalStateException ignored) {
+                // Lyrics lookup can continue without an audio duration.
+            }
+        }
+        authExecutor.execute(() -> {
+            JSONObject response = new JSONObject();
+            String error = null;
+            int status = -1;
+            try {
+                ApiResponse result = sendApiRequest("lyrics", null, null, parameters);
+                response = result.body;
+                status = result.status;
+                if (status < 200 || status >= 300) {
+                    error = response.optString("error", "Hindi nakuha ang lyrics.");
+                }
+            } catch (IOException exception) {
+                if (exception.getMessage() != null &&
+                        exception.getMessage().contains("HTTP 404")) {
+                    try {
+                        ApiResponse result = requestLrclibLyrics(track, parameters.get("duration"));
+                        response = result.body;
+                        status = result.status;
+                        if (status < 200 || status >= 300) {
+                            error = response.optString("error", "Hindi nakuha ang lyrics.");
+                        }
+                    } catch (IOException | JSONException fallbackException) {
+                        android.util.Log.w("Spatibai", "Direct LRCLIB request failed.", fallbackException);
+                        error = "Hindi makakonekta sa lyrics service. Subukan ulit mamaya.";
+                    }
+                } else {
+                    android.util.Log.w("Spatibai", "Lyrics API request failed.", exception);
+                    error = "Hindi makakonekta sa lyrics service. Subukan ulit mamaya.";
+                }
+            } catch (JSONException exception) {
+                android.util.Log.w("Spatibai", "Lyrics API response could not be read.", exception);
+                error = "Hindi mabasa ang tugon ng lyrics service.";
+            }
+            JSONObject result = response;
+            String resultError = error;
+            int resultStatus = status;
+            mainHandler.post(() -> {
+                lyricsRequests.remove(track.id);
+                String lyrics = result.optString("lyrics", "").trim();
+                if (resultStatus == 200 && !lyrics.isEmpty()) {
+                    sessionLyrics.put(track.id, new LyricsResult(
+                            lyrics,
+                            result.optString("syncedLyrics", ""),
+                            result.optString("attribution", ""),
+                            result.optString("provider", ""),
+                            result.optString("backlinkUrl", "")
+                    ));
+                    lyricsRetryAfter.remove(track.id);
+                    if (fullPlayerOpen && track.id.equals(lyricsViewTrackId)) renderLyrics(track);
+                } else {
+                    if (resultStatus == 503) {
+                        long retrySeconds = Math.max(1, result.optLong("retryAfterSeconds", 1));
+                        lyricsRetryAfter.put(track.id,
+                                System.currentTimeMillis() + retrySeconds * 1000);
+                    }
+                    if (fullPlayerOpen && track.id.equals(lyricsViewTrackId) &&
+                            lyricsBodyView != null) {
+                        lyricsBodyView.setText(resultError == null
+                                ? "Walang available na lyrics para sa kantang ito." : resultError);
+                    }
+                }
+            });
+        });
+    }
+
+    private ApiResponse requestLrclibLyrics(Track track, String duration)
+            throws IOException, JSONException {
+        StringBuilder endpoint = new StringBuilder("https://lrclib.net/api/get?track_name=")
+                .append(URLEncoder.encode(track.title, StandardCharsets.UTF_8.name()))
+                .append("&artist_name=")
+                .append(URLEncoder.encode(track.artist, StandardCharsets.UTF_8.name()));
+        if (duration != null && !duration.isEmpty()) {
+            endpoint.append("&duration=")
+                    .append(URLEncoder.encode(duration, StandardCharsets.UTF_8.name()));
+        }
+
+        HttpURLConnection connection = null;
+        try {
+            connection = (HttpURLConnection) new URL(endpoint.toString()).openConnection();
+            connection.setRequestMethod("GET");
+            connection.setConnectTimeout(12_000);
+            connection.setReadTimeout(12_000);
+            connection.setUseCaches(false);
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("User-Agent", "Spatibai/1.0 (Android)");
+            int status = connection.getResponseCode();
+            if (status == HttpURLConnection.HTTP_NOT_FOUND) {
+                return new ApiResponse(status, new JSONObject()
+                        .put("error", "Walang nahanap na lyrics para sa kantang ito."));
+            }
+            if (status == 429 || status == HttpURLConnection.HTTP_UNAVAILABLE) {
+                String retryAfter = connection.getHeaderField("Retry-After");
+                long retrySeconds = 1;
+                if (retryAfter != null) {
+                    try {
+                        retrySeconds = Math.max(1, Long.parseLong(retryAfter.trim()));
+                    } catch (NumberFormatException ignored) {
+                        // Use the short retry interval when the header is not a number.
+                    }
+                }
+                return new ApiResponse(HttpURLConnection.HTTP_UNAVAILABLE, new JSONObject()
+                        .put("error", "Pansamantalang abala ang lyrics service. Subukan ulit mamaya.")
+                        .put("retryAfterSeconds", retrySeconds));
+            }
+
+            InputStream responseStream = status >= 400
+                    ? connection.getErrorStream() : connection.getInputStream();
+            if (responseStream == null) throw new IOException("Empty LRCLIB response.");
+            String responseBody;
+            try (InputStream input = responseStream;
+                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+                byte[] buffer = new byte[4096];
+                int total = 0;
+                int count;
+                while ((count = input.read(buffer)) != -1) {
+                    total += count;
+                    if (total > 65_536) throw new IOException("LRCLIB response is too large.");
+                    output.write(buffer, 0, count);
+                }
+                responseBody = output.toString(StandardCharsets.UTF_8.name());
+            }
+            if (status < 200 || status >= 300) {
+                return new ApiResponse(status, new JSONObject()
+                        .put("error", "Hindi makuha ang lyrics sa ngayon. Subukan ulit mamaya."));
+            }
+
+            JSONObject record = new JSONObject(responseBody);
+            if (!normalizeLyricsMatch(record.optString("trackName", ""))
+                    .equals(normalizeLyricsMatch(track.title)) ||
+                    !normalizeLyricsMatch(record.optString("artistName", ""))
+                            .equals(normalizeLyricsMatch(track.artist))) {
+                return new ApiResponse(HttpURLConnection.HTTP_NOT_FOUND, new JSONObject()
+                        .put("error", "Walang eksaktong tugmang lyrics para sa kantang ito."));
+            }
+            int expectedDuration = 0;
+            if (duration != null && !duration.isEmpty()) {
+                try {
+                    expectedDuration = Integer.parseInt(duration);
+                } catch (NumberFormatException ignored) {
+                    // Duration is optional; the title and artist match still apply.
+                }
+            }
+            if (!TimedLyrics.matchesDuration(expectedDuration, record.optDouble("duration", Double.NaN))) {
+                return new ApiResponse(HttpURLConnection.HTTP_NOT_FOUND, new JSONObject()
+                        .put("error", "Hindi tugma ang haba ng bersyon ng kantang ito sa lyrics."));
+            }
+            if (record.optBoolean("instrumental")) {
+                return new ApiResponse(HttpURLConnection.HTTP_NOT_FOUND, new JSONObject()
+                        .put("error", "Instrumental ang kantang ito at walang lyrics."));
+            }
+
+            String syncedLyrics = record.optString("syncedLyrics", "").trim();
+            String lyrics = record.optString("plainLyrics", "").trim();
+            if (lyrics.isEmpty() && !syncedLyrics.isEmpty()) {
+                lyrics = syncedLyrics.replaceAll(
+                        "(?m)^\\s*(?:\\[\\d{2}:\\d{2}(?:\\.\\d{1,3})?\\]\\s*)+", "").trim();
+            }
+            if (lyrics.isEmpty()) {
+                return new ApiResponse(HttpURLConnection.HTTP_NOT_FOUND, new JSONObject()
+                        .put("error", "Walang available na lyrics para sa kantang ito."));
+            }
+            return new ApiResponse(status, new JSONObject()
+                    .put("lyrics", lyrics)
+                    .put("syncedLyrics", syncedLyrics)
+                    .put("provider", "LRCLIB")
+                    .put("attribution", "Lyrics via LRCLIB")
+                    .put("backlinkUrl", "https://lrclib.net"));
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
+    }
+
+    private static String normalizeLyricsMatch(String value) {
+        return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]+", "");
+    }
+
+    private static final class LyricsResult {
+        final String lyrics;
+        final ArrayList<TimedLyrics.Line> timedLines;
+        final String attribution;
+        final String provider;
+        final String backlinkUrl;
+
+        LyricsResult(String lyrics, String syncedLyrics, String attribution,
+                     String provider, String backlinkUrl) {
+            this.lyrics = lyrics;
+            this.timedLines = TimedLyrics.parse(syncedLyrics);
+            this.attribution = attribution;
+            this.provider = provider;
+            this.backlinkUrl = backlinkUrl;
+        }
+    }
+
     private void minimizeNowPlaying() {
         fullPlayerOpen = false;
+        lyricsViewTrackId = null;
+        lyricsBodyView = null;
+        lyricsAttributionView = null;
+        lyricsProviderView = null;
         fullSeekBar = null;
         fullElapsedTime = null;
         fullDurationTime = null;
@@ -1445,7 +1751,8 @@ public class MainActivity extends AppCompatActivity {
         try {
             int duration = player.getDuration();
             if (duration > 0) {
-                int progress = (int) (player.getCurrentPosition() * 1000L / duration);
+                int currentPosition = player.getCurrentPosition();
+                int progress = (int) (currentPosition * 1000L / duration);
                 if (seekBar != null) seekBar.setProgress(progress);
                 if (fullSeekBar != null) fullSeekBar.setProgress(progress);
                 if (miniElapsedTime != null) {
@@ -1456,9 +1763,76 @@ public class MainActivity extends AppCompatActivity {
                     fullElapsedTime.setText(formatTime(player.getCurrentPosition()));
                 }
                 if (fullDurationTime != null) fullDurationTime.setText(formatTime(duration));
+                updateLyricsIndicator(currentPosition);
             }
         } catch (IllegalStateException ignored) {
             // The player may still be preparing after the screen is refreshed.
+        }
+    }
+
+    private int currentPlaybackPosition() {
+        MediaPlayer player = mediaPlayer;
+        if (player == null || !playerPrepared) return 0;
+        try {
+            return player.getCurrentPosition();
+        } catch (IllegalStateException ignored) {
+            return 0;
+        }
+    }
+
+    private void updateLyricsIndicator(int positionMs) {
+        if (!fullPlayerOpen || lyricsBodyView == null || lyricsIndicatorView == null) return;
+        ArrayList<Track> library = allTracks();
+        if (currentTrack < 0 || currentTrack >= library.size()) return;
+        Track track = library.get(currentTrack);
+        if (!track.id.equals(lyricsViewTrackId)) return;
+        LyricsResult result = sessionLyrics.get(track.id);
+        if (result == null || result.timedLines.isEmpty()) return;
+
+        int lineIndex = -1;
+        for (int i = 0; i < result.timedLines.size(); i++) {
+            if (result.timedLines.get(i).timeMs > positionMs) break;
+            lineIndex = i;
+        }
+        if (lineIndex == activeLyricLine) return;
+        activeLyricLine = lineIndex;
+
+        StringBuilder text = new StringBuilder();
+        int activeStart = -1;
+        int activeEnd = -1;
+        for (int i = 0; i < result.timedLines.size(); i++) {
+            if (i > 0) text.append('\n');
+            if (i == lineIndex) {
+                text.append("▶ ");
+                activeStart = text.length();
+            }
+            text.append(result.timedLines.get(i).text);
+            if (i == lineIndex) activeEnd = text.length();
+        }
+        SpannableString display = new SpannableString(text);
+        if (activeStart >= 0 && activeEnd > activeStart) {
+            display.setSpan(new ForegroundColorSpan(GREEN), activeStart, activeEnd,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+            display.setSpan(new StyleSpan(Typeface.BOLD), activeStart, activeEnd,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        }
+        lyricsBodyView.setText(display);
+        if (lineIndex >= 0) {
+            TimedLyrics.Line line = result.timedLines.get(lineIndex);
+            lyricsIndicatorView.setText("▶ Kasalukuyang linya · " + formatTime(line.timeMs));
+            final int activeLineIndex = lineIndex;
+            final int activeLineStart = activeStart;
+            lyricsBodyView.post(() -> {
+                if (lyricsBodyView == null || activeLyricLine != activeLineIndex) return;
+                android.text.Layout layout = lyricsBodyView.getLayout();
+                if (layout == null) return;
+                int textLine = layout.getLineForOffset(activeLineStart);
+                Rect lineBounds = new Rect(0, layout.getLineTop(textLine),
+                        lyricsBodyView.getWidth(), layout.getLineBottom(textLine));
+                lyricsBodyView.requestRectangleOnScreen(lineBounds, true);
+            });
+        } else {
+            lyricsIndicatorView.setText("♫ Naka-sync sa kanta");
         }
     }
 
@@ -1524,6 +1898,7 @@ public class MainActivity extends AppCompatActivity {
                 playerPrepared = true;
                 preparedPlayer.start();
                 isPlaying = true;
+                addRecentlyPlayed(track.id);
                 mainHandler.removeCallbacks(miniProgressRunnable);
                 mainHandler.post(miniProgressRunnable);
                 refreshCurrentScreen();
@@ -1975,6 +2350,35 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         preferences.edit().putString("online_tracks", array.toString()).apply();
+    }
+
+    private void addRecentlyPlayed(String trackId) {
+        recentlyPlayedTrackIds.remove(trackId);
+        recentlyPlayedTrackIds.add(0, trackId);
+        while (recentlyPlayedTrackIds.size() > MAX_RECENTLY_PLAYED_TRACKS) {
+            recentlyPlayedTrackIds.remove(recentlyPlayedTrackIds.size() - 1);
+        }
+        JSONArray array = new JSONArray();
+        for (String id : recentlyPlayedTrackIds) array.put(id);
+        preferences.edit().putString("recently_played_tracks", array.toString()).apply();
+    }
+
+    private void restoreRecentlyPlayed() {
+        recentlyPlayedTrackIds.clear();
+        String stored = preferences.getString("recently_played_tracks", "[]");
+        try {
+            JSONArray array = new JSONArray(stored);
+            for (int i = 0; i < array.length() &&
+                    recentlyPlayedTrackIds.size() < MAX_RECENTLY_PLAYED_TRACKS; i++) {
+                String id = array.optString(i, "");
+                if (id.matches("[0-9a-fA-F-]{36}") && !recentlyPlayedTrackIds.contains(id)) {
+                    recentlyPlayedTrackIds.add(id);
+                }
+            }
+        } catch (JSONException exception) {
+            android.util.Log.e("Spatibai", "Could not read recently played tracks.", exception);
+            preferences.edit().remove("recently_played_tracks").apply();
+        }
     }
 
     private String playlistStorageKey() {
