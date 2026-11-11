@@ -5,6 +5,14 @@ Options -Indexes
 </FilesMatch>
 
 RewriteEngine On
+RewriteRule ^a8f2b9/?$ admin.html [NC,L]
+RewriteRule ^9x2k7a/?$ index.html [NC,L]
+RewriteCond %{REQUEST_METHOD} =GET
+RewriteCond %{THE_REQUEST} \s/+admin\.html(?:\?[^ ]*)?\s [NC]
+RewriteRule ^admin\.html$ /a8f2b9 [R=302,L]
+RewriteCond %{REQUEST_METHOD} =GET
+RewriteCond %{THE_REQUEST} \s/+index\.html(?:\?[^ ]*)?\s [NC]
+RewriteRule ^index\.html$ /9x2k7a [R=302,L]
 RewriteRule ^admin/?$ admin.html [L]
 RewriteRule ^api/tracks$ api.php?route=tracks [QSA,L]
 RewriteRule ^api/admin/session$ api.php?route=admin-session [QSA,L]

@@ -759,8 +759,12 @@ function staticFile(res, pathname) {
     "/library.html": ["library.html", "text/html; charset=utf-8"],
     "/app.html": ["app.html", "text/html; charset=utf-8"],
     "/index.html": ["index.html", "text/html; charset=utf-8"],
+    "/9x2k7a": ["index.html", "text/html; charset=utf-8"],
+    "/9x2k7a/": ["index.html", "text/html; charset=utf-8"],
     "/admin": ["admin.html", "text/html; charset=utf-8"],
     "/admin.html": ["admin.html", "text/html; charset=utf-8"],
+    "/a8f2b9": ["admin.html", "text/html; charset=utf-8"],
+    "/a8f2b9/": ["admin.html", "text/html; charset=utf-8"],
     "/favicon.ico": ["favicon.ico", "image/x-icon"],
     "/download/spatibai.apk": ["download/spatibai.apk", "application/vnd.android.package-archive", "Spatibai.apk"],
     "/styles.css": ["styles.css", "text/css; charset=utf-8"],
@@ -1118,6 +1122,15 @@ const server = http.createServer(async (req, res) => {
   const pathname = url.pathname;
   const apiRoute = pathname === "/api.php" ? url.searchParams.get("route") : null;
   try {
+    if (req.method === "GET" &&
+        (pathname === "/admin.html" || pathname === "/index.html")) {
+      const alias = pathname === "/admin.html" ? "/a8f2b9" : "/9x2k7a";
+      res.writeHead(302, {
+        Location: `${alias}${url.search}`,
+        "Cache-Control": "no-store",
+      });
+      return res.end();
+    }
     if (req.method === "GET" && pathname === "/healthz") {
       return sendJson(res, 200, { ok: true });
     }

@@ -10,7 +10,7 @@ In the InfinityFree control panel, create a MySQL database and open phpMyAdmin f
 
 In the hosting account's `htdocs` directory, upload the contents of `htdocs-upload`. If using FTP, enable showing and uploading hidden files so the `.htaccess` files are included.
 
-The admin page is available at `/admin` and `/admin.html`. The `.htaccess` file maps the short `/admin` address to `admin.html`.
+The admin page is available at `/admin` and `/a8f2b9`; the home page is also available at `/9x2k7a`. Requests to `/admin.html` and `/index.html` redirect to those aliases. These aliases only change the visible URL; they are not access control, so keep the admin password enabled.
 
 Rename `config.example.php` to `config.php`, then edit it with the database credentials and a new admin password hash. Do not reuse the short password shared in chat. From CMD or PowerShell, generate a hash for a new unique password:
 

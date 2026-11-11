@@ -1,20 +1,12 @@
 RewriteEngine On
 
-# 1. UNANG I-MAP ANG RANDOM CODES SA TOTOONG FILE NAMES (both GET at POST)
+# Map the aliases internally; only the browser-visible URL is changed.
 RewriteRule ^a8f2b9/?$ admin.html [NC,L]
 RewriteRule ^9x2k7a/?$ index.html [NC,L]
 
-
-# 2. Huwag i-redirect ang POST requests para laging gumana ang AJAX forms
-RewriteCond %{REQUEST_METHOD} POST
-RewriteRule ^ - [L]
-
-# 3. Kapag may nag-type ng totoong file name via browser URL bar (GET), i-redirect sa alias
-RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /admin\.html\ HTTP [NC]
-RewriteRule ^admin\.html$ /a8f2b9 [R=301,L]
-
-RewriteCond %{THE_REQUEST} ^[A-Z]{3,9}\ /index\.html\ HTTP [NC]
-RewriteRule ^index\.html$ /9x2k7a [R=301,L]
-
-
-
+RewriteCond %{REQUEST_METHOD} =GET
+RewriteCond %{THE_REQUEST} \s/+admin\.html(?:\?[^ ]*)?\s [NC]
+RewriteRule ^admin\.html$ /a8f2b9 [R=302,L]
+RewriteCond %{REQUEST_METHOD} =GET
+RewriteCond %{THE_REQUEST} \s/+index\.html(?:\?[^ ]*)?\s [NC]
+RewriteRule ^index\.html$ /9x2k7a [R=302,L]
