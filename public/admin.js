@@ -16,6 +16,8 @@ const userList = document.querySelector("#admin-user-list");
 const userCount = document.querySelector("#user-count");
 const musicTab = document.querySelector("#music-tab");
 const usersTab = document.querySelector("#users-tab");
+const musicContent = document.querySelector("#music-content");
+const usersContent = document.querySelector("#users-content");
 let storageReady = false;
 let storageProvider = "local";
 
