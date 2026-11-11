@@ -27,6 +27,10 @@ const spotifyImportForm = document.querySelector("#spotify-import-form");
 const spotifyDownloadsInput = document.querySelector("#spotify-downloads");
 const spotifyImportMessage = document.querySelector("#spotify-import-message");
 const spotifyFrame = document.querySelector("#spotify-converter-frame");
+const spotifyModal = document.querySelector("#spotify-modal");
+const spotifyModalClose = document.querySelector("#spotify-modal-close");
+const spotifyPopupButton = document.querySelector("#spotify-popup-button");
+const spotifyPopupOpen = document.querySelector("#spotify-popup-open");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -403,9 +407,41 @@ async function importSpotifyDownloads(event) {
 
 spotifyImportForm.addEventListener("submit", importSpotifyDownloads);
 
-function loadSpotifyConverter(url = "https://spotyloader.com/artist") {
-  if (!spotifyFrame) return;
-  spotifyFrame.src = url;
+function openSpotifyConverterWindow() {
+  const url = spotifyUrlInput.value.trim();
+  if (!url) {
+    spotifyMessage.textContent = "I-paste ang Spotify artist URL para magpatuloy.";
+    spotifyMessage.classList.add("is-error");
+    spotifyUrlInput.focus();
+    return;
+  }
+
+  try {
+    const target = new URL("https://spotyloader.com/artist");
+    target.searchParams.set("url", url);
+    window.open(target.toString(), "_blank", "noopener,noreferrer,width=1200,height=820");
+    spotifyMessage.textContent = "Binubuksan ang converter sa bagong tab…";
+    spotifyMessage.classList.remove("is-error");
+    if (spotifyModal) spotifyModal.classList.add("hidden");
+  } catch {
+    spotifyMessage.textContent = "Hindi valid ang Spotify URL. Paki-check muli ang link.";
+    spotifyMessage.classList.add("is-error");
+  }
+}
+
+if (spotifyModalClose) {
+  spotifyModalClose.addEventListener("click", () => {
+    spotifyModal.classList.add("hidden");
+    spotifyModal.setAttribute("aria-hidden", "true");
+  });
+}
+
+if (spotifyPopupButton) {
+  spotifyPopupButton.addEventListener("click", openSpotifyConverterWindow);
+}
+
+if (spotifyPopupOpen) {
+  spotifyPopupOpen.addEventListener("click", openSpotifyConverterWindow);
 }
 
 spotifyForm.addEventListener("submit", (event) => {
@@ -418,17 +454,15 @@ spotifyForm.addEventListener("submit", (event) => {
     return;
   }
 
-  spotifyMessage.classList.remove("is-error");
-  spotifyMessage.textContent = "Binubuksan ang converter sa loob ng Spotify tab…";
-
-  try {
-    const target = new URL("https://spotyloader.com/artist");
-    target.searchParams.set("url", url);
-    loadSpotifyConverter(target.toString());
-  } catch {
-    spotifyMessage.textContent = "Hindi valid ang Spotify URL. Paki-check muli ang link.";
-    spotifyMessage.classList.add("is-error");
+  if (spotifyModal) {
+    spotifyModal.classList.remove("hidden");
+    spotifyModal.setAttribute("aria-hidden", "false");
+    spotifyMessage.textContent = "Pinipili ang converter…";
+    spotifyMessage.classList.remove("is-error");
+    return;
   }
+
+  openSpotifyConverterWindow();
 });
 
 checkSession();

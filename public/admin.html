@@ -166,6 +166,25 @@
           <div class="admin-user-list" id="admin-user-list" aria-live="polite"></div>
         </section>
       </section>
+
+      <div class="spotify-modal hidden" id="spotify-modal" aria-hidden="true">
+        <div class="spotify-modal-card" role="dialog" aria-modal="true" aria-labelledby="spotify-modal-title">
+          <div class="spotify-modal-header">
+            <div>
+              <p class="eyebrow">SPOTIFY TO MP3</p>
+              <h3 id="spotify-modal-title">Artist converter</h3>
+            </div>
+            <button class="modal-close" id="spotify-modal-close" type="button" aria-label="Close converter">✕</button>
+          </div>
+          <div class="spotify-modal-body">
+            <p class="muted">Bubuksan ang converter sa isang bagong popup window upang manatiling secure ang page mo.</p>
+            <div class="spotify-modal-actions">
+              <button class="primary-button" id="spotify-popup-button" type="button">Open converter</button>
+              <button class="secondary-button" id="spotify-popup-open" type="button">Open in new tab</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
   </div>
 </body>
