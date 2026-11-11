@@ -594,3 +594,6 @@ audio { display: none; }
   .landing-bottom > a { font-size: 9px; }
   .landing-footer { min-height: 48px; padding: 0 17px; gap: 10px; font-size: 9px; }
 }
+
+.spotify-import-form { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.spotify-import-submit { width: 100%; }

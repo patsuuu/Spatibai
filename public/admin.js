@@ -23,6 +23,9 @@ const spotifyContent = document.querySelector("#spotify-content");
 const spotifyForm = document.querySelector("#spotify-form");
 const spotifyUrlInput = document.querySelector("#spotify-artist-url");
 const spotifyMessage = document.querySelector("#spotify-message");
+const spotifyImportForm = document.querySelector("#spotify-import-form");
+const spotifyDownloadsInput = document.querySelector("#spotify-downloads");
+const spotifyImportMessage = document.querySelector("#spotify-import-message");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -361,6 +364,43 @@ document.querySelector("#logout").addEventListener("click", async () => {
     logoutButton.disabled = false;
   }
 });
+
+async function importSpotifyDownloads(event) {
+  event.preventDefault();
+  const files = Array.from(spotifyDownloadsInput.files);
+  if (!files.length) {
+    spotifyImportMessage.textContent = "Pumili ng kahit isang downloaded audio file.";
+    spotifyImportMessage.classList.add("is-error");
+    return;
+  }
+  if (!storageReady) {
+    spotifyImportMessage.textContent = "Hindi pa available ang storage. Ayusin muna ang persistent storage.";
+    spotifyImportMessage.classList.add("is-error");
+    return;
+  }
+
+  spotifyImportMessage.textContent = "I-import sa library…";
+  spotifyImportMessage.classList.remove("is-error");
+  const formData = new FormData();
+  for (const file of files) formData.append("audio", file);
+
+  try {
+    const result = await requestJson("/api/admin/tracks", {
+      method: "POST",
+      body: formData,
+    });
+    spotifyImportForm.reset();
+    spotifyImportMessage.classList.toggle("is-error", result.uploaded.length === 0);
+    spotifyImportMessage.textContent = `${result.uploaded.length} kanta ang na-import.` +
+      (result.failed.length ? ` ${result.failed.length} file ang hindi na-import.` : "");
+    if (result.uploaded.length) await loadAdminTracks();
+  } catch (error) {
+    spotifyImportMessage.textContent = error.message;
+    spotifyImportMessage.classList.add("is-error");
+  }
+}
+
+spotifyImportForm.addEventListener("submit", importSpotifyDownloads);
 
 function loadSpotifyConverter(url = "https://spotyloader.com/artist") {
   window.open(url, "_blank", "noopener,noreferrer");
