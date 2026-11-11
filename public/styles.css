@@ -217,6 +217,9 @@ audio { display: none; }
 .text-button { padding: 10px 0; border: 0; background: transparent; cursor: pointer; }
 .hidden { display: none !important; }
 
+.spotify-embed-wrap { margin-top: 20px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #0f1411; }
+#spotify-converter-frame { width: 100%; min-height: 640px; border: 0; background: #07110d; }
+
 @media (max-width: 680px) {
   body { padding-bottom: 157px; }
   .topbar { height: 64px; padding: 0 18px; }

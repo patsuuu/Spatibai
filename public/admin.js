@@ -23,6 +23,7 @@ const spotifyContent = document.querySelector("#spotify-content");
 const spotifyForm = document.querySelector("#spotify-form");
 const spotifyUrlInput = document.querySelector("#spotify-artist-url");
 const spotifyMessage = document.querySelector("#spotify-message");
+const spotifyFrame = document.querySelector("#spotify-converter-frame");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -362,6 +363,11 @@ document.querySelector("#logout").addEventListener("click", async () => {
   }
 });
 
+function loadSpotifyConverter(url = "https://spotyloader.com/artist") {
+  if (!spotifyFrame) return;
+  spotifyFrame.src = url;
+}
+
 spotifyForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const url = spotifyUrlInput.value.trim();
@@ -374,11 +380,9 @@ spotifyForm.addEventListener("submit", (event) => {
 
   spotifyMessage.classList.remove("is-error");
   spotifyMessage.textContent = "Binubuksan ang converter…";
-  const target = new URL("https://spotyloader.com/artist");
-  if (url) {
-    target.searchParams.set("url", url);
-  }
-  window.open(target.toString(), "_blank", "noopener,noreferrer");
+  loadSpotifyConverter(`https://spotyloader.com/artist?url=${encodeURIComponent(url)}`);
 });
+
+loadSpotifyConverter();
 
 checkSession();
