@@ -220,6 +220,19 @@ audio { display: none; }
 .spotify-embed-wrap { margin-top: 20px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #0f1411; }
 #spotify-converter-frame { width: 100%; min-height: 640px; border: 0; background: #07110d; }
 
+.spotify-quick-access {
+  margin-top: 18px;
+}
+
+.spotify-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 50px;
+  font-size: 15px;
+}
+
 @media (max-width: 680px) {
   body { padding-bottom: 157px; }
   .topbar { height: 64px; padding: 0 18px; }

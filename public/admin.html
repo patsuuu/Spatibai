@@ -86,8 +86,6 @@
         <div class="admin-tabs" role="tablist" aria-label="Admin sections">
           <button class="admin-tab active" id="music-tab" type="button" role="tab"
             aria-selected="true" aria-controls="music-content">Music</button>
-          <button class="admin-tab" id="spotify-tab" type="button" role="tab"
-            aria-selected="false" aria-controls="spotify-content">Spotify</button>
           <button class="admin-tab" id="users-tab" type="button" role="tab"
             aria-selected="false" aria-controls="users-content">Users</button>
         </div>
@@ -117,45 +115,11 @@
           </section>
         </div>
         <p class="dashboard-footnote">Pumili ng maraming kanta sa isang upload. Awtomatikong babasahin ang title at artist mula sa audio tags; gumamit ng “Artist - Title” na filename kung walang tags. Mag-upload lamang ng sariling kanta o audio na may pahintulot kang ipamahagi.</p>
-        </section>
-        <section class="panel spotify-panel hidden" id="spotify-content" role="tabpanel"
-          aria-labelledby="spotify-tab">
-          <div class="section-heading compact">
-            <div><p class="eyebrow">SPOTIFY TO MP3</p><h2>Artist converter</h2></div>
-            <span class="panel-icon" aria-hidden="true">♫</span>
-          </div>
-          <form id="spotify-form" class="stack">
-            <label for="spotify-artist-url">Spotify artist link
-              <input id="spotify-artist-url" name="artistUrl" type="url" inputmode="url"
-                placeholder="https://open.spotify.com/artist/..." required>
-            </label>
-            <p class="muted">Gamitin lang ang Spotify artist link para magbukas ng legal na converter. Kapag na-download mo na ang mga MP3 na may pahintulot ka, i-import mo ang mga file dito para mailagay sa library ng app.</p>
-            <div class="spotify-actions">
-              <button class="primary-button spotify-submit" id="spotify-button" type="submit">Start</button>
-              <a class="secondary-button" href="https://spotyloader.com/artist" target="_blank" rel="noreferrer noopener">Open spotyloader.com/artist</a>
-            </div>
-            <p class="form-message" id="spotify-message" role="status" aria-live="polite"></p>
-          </form>
-          <div class="spotify-embed-wrap">
-            <iframe id="spotify-converter-frame" title="Spotify artist converter" loading="lazy"
-              referrerpolicy="no-referrer-when-downgrade" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin"></iframe>
-          </div>
-          <form id="spotify-import-form" class="stack spotify-import-form">
-            <label class="file-picker">Mga na-download na MP3
-              <input id="spotify-downloads" name="audio" type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,.weba" multiple required>
-              <span class="file-help">I-upload lang ang mga legal na download mo sa MP3/M4A/WAV. Awtomatiko itong idadagdag sa library para mapili sa APK.</span>
-            </label>
-            <button class="primary-button spotify-import-submit" id="spotify-import-button" type="submit">I-import sa library</button>
-            <p class="form-message" id="spotify-import-message" role="status" aria-live="polite"></p>
-          </form>
-          <div class="spotify-preview">
-            <p class="eyebrow">DOWNLOAD FLOW</p>
-            <ol class="spotify-steps">
-              <li>Paste ang Spotify artist URL.</li>
-              <li>Buksan ang converter at i-download ang mga track.</li>
-              <li>I-import ang downloaded MP3 files sa baba para ma-save sa Spatibai library.</li>
-            </ol>
-          </div>
+        <div class="spotify-quick-access">
+          <a class="primary-button spotify-link-button" href="https://spotyloader.com/artist" target="_blank" rel="noreferrer noopener">
+            Open Spotify artist converter
+          </a>
+        </div>
         </section>
         <section class="panel users-panel hidden" id="users-content" role="tabpanel"
           aria-labelledby="users-tab">

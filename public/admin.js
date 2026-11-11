@@ -16,21 +16,6 @@ const userList = document.querySelector("#admin-user-list");
 const userCount = document.querySelector("#user-count");
 const musicTab = document.querySelector("#music-tab");
 const usersTab = document.querySelector("#users-tab");
-const spotifyTab = document.querySelector("#spotify-tab");
-const musicContent = document.querySelector("#music-content");
-const usersContent = document.querySelector("#users-content");
-const spotifyContent = document.querySelector("#spotify-content");
-const spotifyForm = document.querySelector("#spotify-form");
-const spotifyUrlInput = document.querySelector("#spotify-artist-url");
-const spotifyMessage = document.querySelector("#spotify-message");
-const spotifyImportForm = document.querySelector("#spotify-import-form");
-const spotifyDownloadsInput = document.querySelector("#spotify-downloads");
-const spotifyImportMessage = document.querySelector("#spotify-import-message");
-const spotifyFrame = document.querySelector("#spotify-converter-frame");
-const spotifyModal = document.querySelector("#spotify-modal");
-const spotifyModalClose = document.querySelector("#spotify-modal-close");
-const spotifyPopupButton = document.querySelector("#spotify-popup-button");
-const spotifyPopupOpen = document.querySelector("#spotify-popup-open");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -233,15 +218,11 @@ async function loadAdminUsers() {
 
 function selectAdminTab(tab) {
   const showUsers = tab === "users";
-  const showSpotify = tab === "spotify";
-  musicTab.classList.toggle("active", !showUsers && !showSpotify);
-  spotifyTab.classList.toggle("active", showSpotify);
+  musicTab.classList.toggle("active", !showUsers);
   usersTab.classList.toggle("active", showUsers);
-  musicTab.setAttribute("aria-selected", String(!showUsers && !showSpotify));
-  spotifyTab.setAttribute("aria-selected", String(showSpotify));
+  musicTab.setAttribute("aria-selected", String(!showUsers));
   usersTab.setAttribute("aria-selected", String(showUsers));
-  musicContent.classList.toggle("hidden", showUsers || showSpotify);
-  spotifyContent.classList.toggle("hidden", !showSpotify);
+  musicContent.classList.toggle("hidden", showUsers);
   usersContent.classList.toggle("hidden", !showUsers);
   if (showUsers) loadAdminUsers();
 }
@@ -280,7 +261,6 @@ loginForm.addEventListener("submit", async (event) => {
 
 musicTab.addEventListener("click", () => selectAdminTab("music"));
 usersTab.addEventListener("click", () => selectAdminTab("users"));
-spotifyTab.addEventListener("click", () => selectAdminTab("spotify"));
 
 passwordToggle.addEventListener("click", () => {
   const visible = passwordInput.type === "password";
@@ -368,101 +348,6 @@ document.querySelector("#logout").addEventListener("click", async () => {
   } finally {
     logoutButton.disabled = false;
   }
-});
-
-async function importSpotifyDownloads(event) {
-  event.preventDefault();
-  const files = Array.from(spotifyDownloadsInput.files);
-  if (!files.length) {
-    spotifyImportMessage.textContent = "Pumili ng kahit isang downloaded audio file.";
-    spotifyImportMessage.classList.add("is-error");
-    return;
-  }
-  if (!storageReady) {
-    spotifyImportMessage.textContent = "Hindi pa available ang storage. Ayusin muna ang persistent storage.";
-    spotifyImportMessage.classList.add("is-error");
-    return;
-  }
-
-  spotifyImportMessage.textContent = "I-import sa library…";
-  spotifyImportMessage.classList.remove("is-error");
-  const formData = new FormData();
-  for (const file of files) formData.append("audio", file);
-
-  try {
-    const result = await requestJson("/api/admin/tracks", {
-      method: "POST",
-      body: formData,
-    });
-    spotifyImportForm.reset();
-    spotifyImportMessage.classList.toggle("is-error", result.uploaded.length === 0);
-    spotifyImportMessage.textContent = `${result.uploaded.length} kanta ang na-import.` +
-      (result.failed.length ? ` ${result.failed.length} file ang hindi na-import.` : "");
-    if (result.uploaded.length) await loadAdminTracks();
-  } catch (error) {
-    spotifyImportMessage.textContent = error.message;
-    spotifyImportMessage.classList.add("is-error");
-  }
-}
-
-spotifyImportForm.addEventListener("submit", importSpotifyDownloads);
-
-function openSpotifyConverterWindow() {
-  const url = spotifyUrlInput.value.trim();
-  if (!url) {
-    spotifyMessage.textContent = "I-paste ang Spotify artist URL para magpatuloy.";
-    spotifyMessage.classList.add("is-error");
-    spotifyUrlInput.focus();
-    return;
-  }
-
-  try {
-    const target = new URL("https://spotyloader.com/artist");
-    target.searchParams.set("url", url);
-    window.open(target.toString(), "_blank", "noopener,noreferrer,width=1200,height=820");
-    spotifyMessage.textContent = "Binubuksan ang converter sa bagong tab…";
-    spotifyMessage.classList.remove("is-error");
-    if (spotifyModal) spotifyModal.classList.add("hidden");
-  } catch {
-    spotifyMessage.textContent = "Hindi valid ang Spotify URL. Paki-check muli ang link.";
-    spotifyMessage.classList.add("is-error");
-  }
-}
-
-if (spotifyModalClose) {
-  spotifyModalClose.addEventListener("click", () => {
-    spotifyModal.classList.add("hidden");
-    spotifyModal.setAttribute("aria-hidden", "true");
-  });
-}
-
-if (spotifyPopupButton) {
-  spotifyPopupButton.addEventListener("click", openSpotifyConverterWindow);
-}
-
-if (spotifyPopupOpen) {
-  spotifyPopupOpen.addEventListener("click", openSpotifyConverterWindow);
-}
-
-spotifyForm.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const url = spotifyUrlInput.value.trim();
-  if (!url) {
-    spotifyMessage.textContent = "I-paste ang Spotify artist URL para magpatuloy.";
-    spotifyMessage.classList.add("is-error");
-    spotifyUrlInput.focus();
-    return;
-  }
-
-  if (spotifyModal) {
-    spotifyModal.classList.remove("hidden");
-    spotifyModal.setAttribute("aria-hidden", "false");
-    spotifyMessage.textContent = "Pinipili ang converter…";
-    spotifyMessage.classList.remove("is-error");
-    return;
-  }
-
-  openSpotifyConverterWindow();
 });
 
 checkSession();
