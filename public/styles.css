@@ -354,6 +354,18 @@ audio { display: none; }
 .admin-tab { min-height: 42px; padding: 0 16px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 700; }
 .admin-tab:hover, .admin-tab.active { color: var(--green); }
 .admin-tab.active { border-bottom-color: var(--green); }
+.spotify-panel { padding: 24px; border-radius: 16px; }
+.spotify-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.secondary-button { min-height: 47px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #354239; border-radius: 25px; background: #111713; color: var(--text); font-weight: 700; text-decoration: none; }
+.secondary-button:hover { border-color: #4e6959; }
+.spotify-preview { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }
+.spotify-steps { margin: 10px 0 0; padding-left: 18px; color: var(--muted); line-height: 1.7; }
+.form-message.is-error { color: #ffaaaa; }
+@media (max-width: 620px) {
+  .spotify-actions { flex-direction: column; align-items: stretch; }
+  .secondary-button, .spotify-submit { width: 100%; }
+}
+
 .dashboard-grid { display: grid; grid-template-columns: minmax(300px, .92fr) minmax(0, 1.08fr); align-items: stretch; gap: 20px; }
 .dashboard-grid .panel { min-width: 0; margin: 0; padding: 24px; border-radius: 16px; }
 .dashboard-grid .section-heading h2 { font-size: 20px; }

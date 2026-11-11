@@ -16,8 +16,13 @@ const userList = document.querySelector("#admin-user-list");
 const userCount = document.querySelector("#user-count");
 const musicTab = document.querySelector("#music-tab");
 const usersTab = document.querySelector("#users-tab");
+const spotifyTab = document.querySelector("#spotify-tab");
 const musicContent = document.querySelector("#music-content");
 const usersContent = document.querySelector("#users-content");
+const spotifyContent = document.querySelector("#spotify-content");
+const spotifyForm = document.querySelector("#spotify-form");
+const spotifyUrlInput = document.querySelector("#spotify-artist-url");
+const spotifyMessage = document.querySelector("#spotify-message");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -220,11 +225,15 @@ async function loadAdminUsers() {
 
 function selectAdminTab(tab) {
   const showUsers = tab === "users";
-  musicTab.classList.toggle("active", !showUsers);
+  const showSpotify = tab === "spotify";
+  musicTab.classList.toggle("active", !showUsers && !showSpotify);
+  spotifyTab.classList.toggle("active", showSpotify);
   usersTab.classList.toggle("active", showUsers);
-  musicTab.setAttribute("aria-selected", String(!showUsers));
+  musicTab.setAttribute("aria-selected", String(!showUsers && !showSpotify));
+  spotifyTab.setAttribute("aria-selected", String(showSpotify));
   usersTab.setAttribute("aria-selected", String(showUsers));
-  musicContent.classList.toggle("hidden", showUsers);
+  musicContent.classList.toggle("hidden", showUsers || showSpotify);
+  spotifyContent.classList.toggle("hidden", !showSpotify);
   usersContent.classList.toggle("hidden", !showUsers);
   if (showUsers) loadAdminUsers();
 }
@@ -263,6 +272,7 @@ loginForm.addEventListener("submit", async (event) => {
 
 musicTab.addEventListener("click", () => selectAdminTab("music"));
 usersTab.addEventListener("click", () => selectAdminTab("users"));
+spotifyTab.addEventListener("click", () => selectAdminTab("spotify"));
 
 passwordToggle.addEventListener("click", () => {
   const visible = passwordInput.type === "password";
@@ -350,6 +360,25 @@ document.querySelector("#logout").addEventListener("click", async () => {
   } finally {
     logoutButton.disabled = false;
   }
+});
+
+spotifyForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const url = spotifyUrlInput.value.trim();
+  if (!url) {
+    spotifyMessage.textContent = "I-paste ang Spotify artist URL para magpatuloy.";
+    spotifyMessage.classList.add("is-error");
+    spotifyUrlInput.focus();
+    return;
+  }
+
+  spotifyMessage.classList.remove("is-error");
+  spotifyMessage.textContent = "Binubuksan ang converter…";
+  const target = new URL("https://spotyloader.com/artist");
+  if (url) {
+    target.searchParams.set("url", url);
+  }
+  window.open(target.toString(), "_blank", "noopener,noreferrer");
 });
 
 checkSession();
