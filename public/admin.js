@@ -26,6 +26,7 @@ const spotifyMessage = document.querySelector("#spotify-message");
 const spotifyImportForm = document.querySelector("#spotify-import-form");
 const spotifyDownloadsInput = document.querySelector("#spotify-downloads");
 const spotifyImportMessage = document.querySelector("#spotify-import-message");
+const spotifyFrame = document.querySelector("#spotify-converter-frame");
 let storageReady = false;
 let storageProvider = "local";
 
@@ -403,7 +404,8 @@ async function importSpotifyDownloads(event) {
 spotifyImportForm.addEventListener("submit", importSpotifyDownloads);
 
 function loadSpotifyConverter(url = "https://spotyloader.com/artist") {
-  window.open(url, "_blank", "noopener,noreferrer");
+  if (!spotifyFrame) return;
+  spotifyFrame.src = url;
 }
 
 spotifyForm.addEventListener("submit", (event) => {
@@ -417,10 +419,16 @@ spotifyForm.addEventListener("submit", (event) => {
   }
 
   spotifyMessage.classList.remove("is-error");
-  spotifyMessage.textContent = "Binubuksan ang converter…";
-  const target = new URL("https://spotyloader.com/artist");
-  target.searchParams.set("url", url);
-  loadSpotifyConverter(target.toString());
+  spotifyMessage.textContent = "Binubuksan ang converter sa loob ng Spotify tab…";
+
+  try {
+    const target = new URL("https://spotyloader.com/artist");
+    target.searchParams.set("url", url);
+    loadSpotifyConverter(target.toString());
+  } catch {
+    spotifyMessage.textContent = "Hindi valid ang Spotify URL. Paki-check muli ang link.";
+    spotifyMessage.classList.add("is-error");
+  }
 });
 
 checkSession();
