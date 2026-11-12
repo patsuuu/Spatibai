@@ -771,6 +771,7 @@ function staticFile(res, pathname) {
     "/app.js": ["app.js", "text/javascript; charset=utf-8"],
     "/admin.js": ["admin.js", "text/javascript; charset=utf-8"],
     "/assets/spatibai-logo.png": ["assets/spatibai-logo.png", "image/png"],
+    "/assets/phone.jpg": ["assets/phone.jpg", "image/jpeg"],
     "/assets/phone.jpeg": ["assets/phone.jpeg", "image/jpeg"],
   };
   const entry = routes[pathname];
